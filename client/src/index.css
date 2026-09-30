@@ -1,0 +1,2727 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* LIGHT MODE */
+:root {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  --button-outline: rgba(0, 0, 0, .10);
+  --badge-outline: rgba(0, 0, 0, .05);
+  --opaque-button-border-intensity: -8;
+  --elevate-1: rgba(0, 0, 0, .03);
+  --elevate-2: rgba(0, 0, 0, .08);
+  --background: 0 0% 100%;
+  --foreground: 220 15% 12%;
+  --border: 220 8% 88%;
+  --card: 0 0% 98%;
+  --card-foreground: 220 15% 12%;
+  --card-border: 0 0% 94%;
+  --sidebar: 220 5% 96%;
+  --sidebar-foreground: 220 15% 15%;
+  --sidebar-border: 220 5% 92%;
+  --sidebar-primary: 217 91% 45%;
+  --sidebar-primary-foreground: 0 0% 98%;
+  --sidebar-accent: 220 6% 92%;
+  --sidebar-accent-foreground: 220 15% 20%;
+  --sidebar-ring: 217 91% 45%;
+  --popover: 220 4% 94%;
+  --popover-foreground: 220 15% 15%;
+  --popover-border: 220 4% 90%;
+  --primary: 217 91% 35%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 220 6% 90%;
+  --secondary-foreground: 220 15% 18%;
+  --muted: 220 5% 92%;
+  --muted-foreground: 220 12% 40%;
+  --accent: 220 8% 94%;
+  --accent-foreground: 220 15% 18%;
+  --destructive: 0 84% 40%;
+  --destructive-foreground: 0 0% 98%;
+  --input: 220 15% 60%;
+  --ring: 217 91% 45%;
+  --chart-1: 217 91% 35%;
+  --chart-2: 200 85% 38%;
+  --chart-3: 220 70% 42%;
+  --chart-4: 240 75% 45%;
+  --chart-5: 195 80% 40%;
+  --font-sans: 'Plus Jakarta Sans', sans-serif;
+  --font-serif: sans-serif;
+  --font-mono: monospace;
+  --radius: .5rem;
+  --shadow-2xs: 0px 2px 0px 0px hsl(220 8% 45% / 0.00);
+  --shadow-xs: 0px 2px 0px 0px hsl(220 8% 45% / 0.00);
+  --shadow-sm: 0px 2px 0px 0px hsl(220 8% 45% / 0.00), 0px 1px 2px -1px hsl(220 8% 45% / 0.00);
+  --shadow: 0px 2px 0px 0px hsl(220 8% 45% / 0.00), 0px 1px 2px -1px hsl(220 8% 45% / 0.00);
+  --shadow-md: 0px 2px 0px 0px hsl(220 8% 45% / 0.00), 0px 2px 4px -1px hsl(220 8% 45% / 0.00);
+  --shadow-lg: 0px 2px 0px 0px hsl(220 8% 45% / 0.00), 0px 4px 6px -1px hsl(220 8% 45% / 0.00);
+  --shadow-xl: 0px 2px 0px 0px hsl(220 8% 45% / 0.00), 0px 8px 10px -1px hsl(220 8% 45% / 0.00);
+  --shadow-2xl: 0px 2px 0px 0px hsl(220 8% 45% / 0.00);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+
+  /* Fallback for older browsers */
+  --sidebar-primary-border: hsl(var(--sidebar-primary));
+  --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --sidebar-accent-border: hsl(var(--sidebar-accent));
+  --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --primary-border: hsl(var(--primary));
+  --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --secondary-border: hsl(var(--secondary));
+  --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --muted-border: hsl(var(--muted));
+  --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --accent-border: hsl(var(--accent));
+  --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --destructive-border: hsl(var(--destructive));
+  --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+}
+
+.dark {
+  --button-outline: rgba(255, 255, 255, .10);
+  --badge-outline: rgba(255, 255, 255, .05);
+  --opaque-button-border-intensity: 9;
+  --elevate-1: rgba(255, 255, 255, .04);
+  --elevate-2: rgba(255, 255, 255, .09);
+  --background: 220 15% 8%;
+  --foreground: 0 0% 95%;
+  --border: 220 10% 16%;
+  --card: 220 14% 10%;
+  --card-foreground: 0 0% 95%;
+  --card-border: 220 12% 12%;
+  --sidebar: 220 13% 12%;
+  --sidebar-foreground: 0 0% 92%;
+  --sidebar-border: 220 12% 14%;
+  --sidebar-primary: 217 91% 50%;
+  --sidebar-primary-foreground: 0 0% 98%;
+  --sidebar-accent: 220 12% 16%;
+  --sidebar-accent-foreground: 0 0% 90%;
+  --sidebar-ring: 217 91% 55%;
+  --popover: 220 12% 14%;
+  --popover-foreground: 0 0% 92%;
+  --popover-border: 220 10% 16%;
+  --primary: 217 91% 40%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 220 10% 18%;
+  --secondary-foreground: 0 0% 90%;
+  --muted: 220 10% 16%;
+  --muted-foreground: 220 8% 60%;
+  --accent: 220 12% 15%;
+  --accent-foreground: 0 0% 90%;
+  --destructive: 0 84% 35%;
+  --destructive-foreground: 0 0% 98%;
+  --input: 220 15% 30%;
+  --ring: 217 91% 50%;
+  --chart-1: 217 91% 60%;
+  --chart-2: 200 85% 65%;
+  --chart-3: 220 70% 62%;
+  --chart-4: 240 75% 68%;
+  --chart-5: 195 80% 58%;
+  --shadow-2xs: 0px 2px 0px 0px hsl(220 12% 8% / 0.00);
+  --shadow-xs: 0px 2px 0px 0px hsl(220 12% 8% / 0.00);
+  --shadow-sm: 0px 2px 0px 0px hsl(220 12% 8% / 0.00), 0px 1px 2px -1px hsl(220 12% 8% / 0.00);
+  --shadow: 0px 2px 0px 0px hsl(220 12% 8% / 0.00), 0px 1px 2px -1px hsl(220 12% 8% / 0.00);
+  --shadow-md: 0px 2px 0px 0px hsl(220 12% 8% / 0.00), 0px 2px 4px -1px hsl(220 12% 8% / 0.00);
+  --shadow-lg: 0px 2px 0px 0px hsl(220 12% 8% / 0.00), 0px 4px 6px -1px hsl(220 12% 8% / 0.00);
+  --shadow-xl: 0px 2px 0px 0px hsl(220 12% 8% / 0.00), 0px 8px 10px -1px hsl(220 12% 8% / 0.00);
+  --shadow-2xl: 0px 2px 0px 0px hsl(220 12% 8% / 0.00);
+
+  /* Fallback for older browsers */
+  --sidebar-primary-border: hsl(var(--sidebar-primary));
+  --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --sidebar-accent-border: hsl(var(--sidebar-accent));
+  --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --primary-border: hsl(var(--primary));
+  --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --secondary-border: hsl(var(--secondary));
+  --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --muted-border: hsl(var(--muted));
+  --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --accent-border: hsl(var(--accent));
+  --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --destructive-border: hsl(var(--destructive));
+  --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+
+  /* Global Headings and Metric Numbers mapped to Space Grotesk */
+  h1,
+  h2,
+  .font-heading,
+  [data-testid="text-total-worked"],
+  [data-testid="text-remaining"],
+  [data-testid="text-productivity-score"],
+  [data-testid="text-total-hours"],
+  [data-testid="text-tasks-completed"],
+  [data-testid="text-avg-hours"] {
+    font-family: 'Space Grotesk', sans-serif !important;
+  }
+
+  /* Remove black background box from Knockturn logo in top header bar */
+  [data-testid="header-logo"] {
+    mix-blend-mode: screen !important;
+  }
+
+  /* Light Mode Header background and shadow (inverted from source black) */
+  html[style*="invert"] [data-testid="app-header"] {
+    background-color: #000000 !important;
+    background-image: none !important;
+    box-shadow: 0 1px 4px rgba(255, 255, 255, 0.08) !important;
+    border-bottom: none !important;
+    backdrop-filter: none !important;
+  }
+
+  /* Light Mode Main Content Area Background (#F3F4F6 after inversion) */
+  html[style*="invert"] [data-testid="main-content"] {
+    background-color: #090A0C !important;
+  }
+
+  /* Fix pages using bg-slate-950 */
+  html[style*="invert"] .bg-slate-950 {
+    background-color: #090A0C !important;
+  }
+
+  /* Fix Calendar page - has inline #fff/white background */
+  html[style*="invert"] [style*="background: #fff"],
+  html[style*="invert"] [style*="background:#fff"],
+  html[style*="invert"] [style*="background-color: #fff"],
+  html[style*="invert"] [style*="background-color:#fff"],
+  html[style*="invert"] [style*="background: white"],
+  html[style*="invert"] [style*="background:white"],
+  html[style*="invert"] [style*="background-color: white"],
+  html[style*="invert"] [style*="background-color:white"],
+  html[style*="invert"] [style*="background: rgb(255, 255, 255)"],
+  html[style*="invert"] [style*="background:rgb(255,255,255)"],
+  html[style*="invert"] [style*="background-color: rgb(255, 255, 255)"],
+  html[style*="invert"] [style*="background-color:rgb(255,255,255)"] {
+    background-color: #000000 !important;
+  }
+
+  /* Fix pages using bg-[#020617] */
+  html[style*="invert"] .bg-\[#020617\] {
+    background-color: #090A0C !important;
+  }
+
+  /* Specific page background fix class */
+  html[style*="invert"] .page-bg-fix {
+    background-color: #090A0C !important;
+  }
+
+  /* White card fix for Missing Reports stat cards */
+  html[style*="invert"] .missing-stat-card {
+    background-color: #000000 !important;
+    border: 1px solid #121820 !important;
+    border-radius: 12px !important;
+  }
+
+  /* Calendar grid background */
+  html[style*="invert"] .fc,
+  html[style*="invert"] .fc-view-harness,
+  html[style*="invert"] .fc-scrollgrid,
+  html[style*="invert"] .fc td,
+  html[style*="invert"] .fc th,
+  html[style*="invert"] .fc-timegrid-slot,
+  html[style*="invert"] .fc-timegrid-body,
+  html[style*="invert"] .fc-col-header-cell,
+  html[style*="invert"] .fc-daygrid-day,
+  html[style*="invert"] .fc-scroller,
+  html[style*="invert"] .calendar-main-grid,
+  html[style*="invert"] .calendar-header-bar {
+    background-color: #000000 !important;
+  }
+
+  /* Calendar left sidebar panel */
+  html[style*="invert"] .calendar-left-panel {
+    background-color: #000000 !important;
+  }
+
+  /* Calendar grid lines */
+  html[style*="invert"] .fc td,
+  html[style*="invert"] .fc th {
+    border-color: #121820 !important;
+  }
+
+  /* Fix remaining black elements in calendar */
+  html[style*="invert"] .fc-timegrid-now-indicator-container,
+  html[style*="invert"] .fc-timegrid-slot-lane,
+  html[style*="invert"] .fc-non-business,
+  html[style*="invert"] .fc-bg-event {
+    background-color: #000000 !important;
+  }
+
+  /* Fix buttons in calendar left panel */
+  html[style*="invert"] .calendar-left-panel button,
+  html[style*="invert"] .calendar-left-panel input,
+  html[style*="invert"] .calendar-left-panel [class*="btn"],
+  html[style*="invert"] .calendar-left-panel [class*="button"] {
+    background-color: #000000 !important;
+    color: #ffffff !important;
+    border-color: #121820 !important;
+  }
+
+  /* Fix Today button and Day/Week/Month buttons */
+  html[style*="invert"] .fc-button,
+  html[style*="invert"] .fc-button-group button,
+  html[style*="invert"] .calendar-header-bar button {
+    background-color: #000000 !important;
+    border-color: #121820 !important;
+    color: #ffffff !important;
+  }
+
+  html[style*="invert"] .fc-button-active,
+  html[style*="invert"] .fc-button-primary:not(:disabled).fc-button-active,
+  html[style*="invert"] .calendar-header-bar button[style*="#e8f0fe"] {
+    background-color: #FF3D00 !important;
+    color: #ffffff !important;
+  }
+
+  /* Fix current time slot black stripe */
+  html[style*="invert"] .fc-timegrid-now-indicator-line,
+  html[style*="invert"] .fc-timegrid-slot.fc-timegrid-slot-now,
+  html[style*="invert"] tr.fc-timegrid-slot-now td,
+  html[style*="invert"] .fc-timegrid-slot-now {
+    background-color: #F5F5F5 !important;
+  }
+
+  /* Calendar hover state - grey */
+  html[style*="invert"] .fc-timegrid-slot:hover,
+  html[style*="invert"] .fc-daygrid-day:hover,
+  html[style*="invert"] .fc td:hover,
+  html[style*="invert"] .calendar-main-grid [onClick]:not([draggable]):hover {
+    background-color: #090A0C !important;
+    cursor: pointer;
+  }
+
+  /* Fix 1 — Greeting Card to White */
+  html[style*="invert"] .greeting-card {
+    background-color: #000000 !important;
+    border: 1px solid #121820 !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 20px rgba(255, 255, 255, 0.08) !important;
+  }
+
+  html[style*="invert"] .greeting-card p,
+  html[style*="invert"] .greeting-card span,
+  html[style*="invert"] .greeting-card h3 {
+    color: #ffffff !important;
+  }
+
+  /* Fix 2 — Robot Original Color */
+  html[style*="invert"] .aria-robot-mascot {
+    filter: invert(1) hue-rotate(180deg) drop-shadow(0 12px 24px rgba(0, 0, 0, 0.4)) !important;
+  }
+}
+
+/**
+ * Using the elevate system.
+ * Automatic contrast adjustment.
+ *
+ * <element className="hover-elevate" />
+ * <element className="active-elevate-2" />
+ *
+ * // Using the tailwind utility when a data attribute is "on"
+ * <element className="toggle-elevate data-[state=on]:toggle-elevated" />
+ * // Or manually controlling the toggle state
+ * <element className="toggle-elevate toggle-elevated" />
+ *
+ * Elevation systems have to handle many states.
+ * - not-hovered, vs. hovered vs. active  (three mutually exclusive states)
+ * - toggled or not
+ * - focused or not (this is not handled with these utilities)
+ *
+ * Even without handling focused or not, this is six possible combinations that
+ * need to be distinguished from eachother visually.
+ */
+@layer utilities {
+
+  /* Hide ugly search cancel button in Chrome until we can style it properly */
+  input[type="search"]::-webkit-search-cancel-button {
+    @apply hidden;
+  }
+
+  /* Placeholder styling for contentEditable div */
+  [contenteditable][data-placeholder]:empty::before {
+    content: attr(data-placeholder);
+    color: hsl(var(--muted-foreground));
+    pointer-events: none;
+  }
+
+  /* .no-default-hover-elevate/no-default-active-elevate is an escape hatch so consumers of
+   * buttons/badges can remove the automatic brightness adjustment on interactions
+   * and program their own. */
+  .no-default-hover-elevate {}
+
+  .no-default-active-elevate {}
+
+
+  /**
+   * Toggleable backgrounds go behind the content. Hoverable/active goes on top.
+   * This way they can stack/compound. Both will overlap the parent's borders!
+   * So borders will be automatically adjusted both on toggle, and hover/active,
+   * and they will be compounded.
+   */
+  .toggle-elevate::before,
+  .toggle-elevate-2::before {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0px;
+    /*border-radius: inherit;   match rounded corners */
+    border-radius: inherit;
+    z-index: -1;
+    /* sits behind content but above backdrop */
+  }
+
+  .toggle-elevate.toggle-elevated::before {
+    background-color: var(--elevate-2);
+  }
+
+  /* If there's a 1px border, adjust the inset so that it covers that parent's border */
+  .border.toggle-elevate::before {
+    inset: -1px;
+  }
+
+  /* Does not work on elements with overflow:hidden! */
+  .hover-elevate:not(.no-default-hover-elevate),
+  .active-elevate:not(.no-default-active-elevate),
+  .hover-elevate-2:not(.no-default-hover-elevate),
+  .active-elevate-2:not(.no-default-active-elevate) {
+    position: relative;
+    z-index: 0;
+  }
+
+  .hover-elevate:not(.no-default-hover-elevate)::after,
+  .active-elevate:not(.no-default-active-elevate)::after,
+  .hover-elevate-2:not(.no-default-hover-elevate)::after,
+  .active-elevate-2:not(.no-default-active-elevate)::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0px;
+    /*border-radius: inherit;   match rounded corners */
+    border-radius: inherit;
+    z-index: 999;
+    /* sits in front of content */
+  }
+
+  .hover-elevate:hover:not(.no-default-hover-elevate)::after,
+  .active-elevate:active:not(.no-default-active-elevate)::after {
+    background-color: var(--elevate-1);
+  }
+
+  .hover-elevate-2:hover:not(.no-default-hover-elevate)::after,
+  .active-elevate-2:active:not(.no-default-active-elevate)::after {
+    background-color: var(--elevate-2);
+  }
+
+  /* If there's a 1px border, adjust the inset so that it covers that parent's border */
+  .border.hover-elevate:not(.no-hover-interaction-elevate)::after,
+  .border.active-elevate:not(.no-active-interaction-elevate)::after,
+  .border.hover-elevate-2:not(.no-hover-interaction-elevate)::after,
+  .border.active-elevate-2:not(.no-active-interaction-elevate)::after,
+  .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
+    inset: -1px;
+  }
+}
+
+/* Glassmorphism Utilities */
+.glass-card {
+  @apply bg-slate-900/40 backdrop-blur-md border border-white/10;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+.glass-morphism {
+  @apply backdrop-blur-xl bg-white/5 border border-white/10;
+}
+
+.glass-pill {
+  @apply bg-white/10 backdrop-blur-sm border border-white/20 hover:bg-white/20 transition-all duration-300;
+}
+
+/* Premium Gradient Utilities */
+.bg-premium-gradient {
+  @apply bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900;
+}
+
+.text-gradient {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-400;
+}
+
+.border-gradient {
+  border: 1px solid;
+  border-image-source: linear-gradient(to right, rgba(59, 130, 246, 0.5), rgba(6, 182, 212, 0.5));
+  border-image-slice: 1;
+}
+
+/* Micro-animations */
+.hover-glow {
+  @apply transition-all duration-300 hover:border-blue-500/50;
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+}
+
+/* ══ ARIA VOICE BLOB ══════════════════════════════════ */
+
+.aria-blob-sphere {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  --blob-one: #5DCAA5;
+  --blob-two: #0F6E56;
+  --blob-three: #5DCAA580;
+  --blob-four: #0F6E5680;
+  --blob-five: #5DCAA740;
+  box-shadow:
+    0 0 25px 0 var(--blob-three),
+    0 20px 50px 0 var(--blob-four);
+  animation: ariaBlobColorize 6s ease-in-out infinite;
+}
+
+.aria-blob-sphere::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border-top: solid 1px var(--blob-one);
+  border-bottom: solid 1px var(--blob-two);
+  background: linear-gradient(180deg, var(--blob-five), var(--blob-four));
+  box-shadow:
+    inset 0 10px 10px 0 var(--blob-three),
+    inset 0 -10px 10px 0 var(--blob-four);
+}
+
+.aria-blob-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100px;
+  height: 100px;
+  background: linear-gradient(180deg, #5DCAA5 30%, #0F6E56 70%);
+  mask: url(#aria-blob-mask);
+  -webkit-mask: url(#aria-blob-mask);
+}
+
+.aria-wave-bar {
+  width: 4px;
+  border-radius: 2px;
+  background: #1D9E75;
+  height: 4px;
+  animation: ariaWave 1s ease-in-out infinite;
+}
+
+@keyframes ariaBlobRotate {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ariaBlobColorize {
+  0% {
+    filter: hue-rotate(0deg);
+  }
+
+  20% {
+    filter: hue-rotate(-30deg);
+  }
+
+  40% {
+    filter: hue-rotate(-60deg);
+  }
+
+  60% {
+    filter: hue-rotate(-90deg);
+  }
+
+  80% {
+    filter: hue-rotate(-45deg);
+  }
+
+  100% {
+    filter: hue-rotate(0deg);
+  }
+}
+
+@keyframes ariaWave {
+
+  0%,
+  100% {
+    height: 4px;
+    opacity: 0.4;
+  }
+
+  50% {
+    height: 24px;
+    opacity: 1;
+  }
+}
+
+/* ══ ARIA VOICE BLOB LIQUID ══════════════════════════ */
+
+.aria-voice-loader {
+  --color-one: #5DCAA5;
+  --color-two: #0F6E56;
+  --color-three: #5DCAA580;
+  --color-four: #0F6E5680;
+  --color-five: #5DCAA740;
+  --time-animation: 2s;
+  position: relative;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  box-shadow: 0 0 25px 0 var(--color-three), 0 20px 50px 0 var(--color-four);
+  animation: ariaColorize 6s linear infinite;
+}
+
+.aria-voice-loader::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border-top: solid 1px var(--color-one);
+  border-bottom: solid 1px var(--color-two);
+  background: linear-gradient(180deg, var(--color-five), var(--color-four));
+  box-shadow: inset 0 10px 10px 0 var(--color-three), inset 0 -10px 10px 0 var(--color-four);
+}
+
+.aria-box {
+  width: 100px;
+  height: 100px;
+  background: linear-gradient(180deg, var(--color-one) 30%, var(--color-two) 70%);
+  mask: url(#clipping);
+  -webkit-mask: url(#clipping);
+}
+
+.aria-voice-loader svg {
+  position: absolute;
+}
+
+.aria-voice-loader svg #clipping {
+  filter: contrast(15);
+  animation: ariaRoundness calc(var(--time-animation) / 2) linear infinite;
+}
+
+.aria-voice-loader svg #clipping polygon {
+  filter: blur(7px);
+}
+
+.aria-voice-loader svg #clipping polygon:nth-child(1) {
+  transform-origin: 75% 25%;
+  transform: rotate(90deg);
+}
+
+.aria-voice-loader svg #clipping polygon:nth-child(2) {
+  transform-origin: 50% 50%;
+  animation: ariaRotation var(--time-animation) linear infinite reverse;
+}
+
+.aria-voice-loader svg #clipping polygon:nth-child(3) {
+  transform-origin: 50% 60%;
+  animation: ariaRotation var(--time-animation) linear infinite;
+  animation-delay: calc(var(--time-animation) / -3);
+}
+
+.aria-voice-loader svg #clipping polygon:nth-child(4) {
+  transform-origin: 40% 40%;
+  animation: ariaRotation var(--time-animation) linear infinite reverse;
+}
+
+.aria-voice-loader svg #clipping polygon:nth-child(5) {
+  transform-origin: 40% 40%;
+  animation: ariaRotation var(--time-animation) linear infinite reverse;
+  animation-delay: calc(var(--time-animation) / -2);
+}
+
+.aria-voice-loader svg #clipping polygon:nth-child(6) {
+  transform-origin: 60% 40%;
+  animation: ariaRotation var(--time-animation) linear infinite;
+}
+
+.aria-voice-loader svg #clipping polygon:nth-child(7) {
+  transform-origin: 60% 40%;
+  animation: ariaRotation var(--time-animation) linear infinite;
+  animation-delay: calc(var(--time-animation) / -1.5);
+}
+
+@keyframes ariaRotation {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ariaRoundness {
+
+  0%,
+  60%,
+  100% {
+    filter: contrast(15);
+  }
+
+  20%,
+  40% {
+    filter: contrast(3);
+  }
+}
+
+@keyframes ariaColorize {
+  0% {
+    filter: hue-rotate(0deg);
+  }
+
+  25% {
+    filter: hue-rotate(90deg);
+  }
+
+  50% {
+    filter: hue-rotate(180deg);
+  }
+
+  75% {
+    filter: hue-rotate(270deg);
+  }
+
+  100% {
+    filter: hue-rotate(360deg);
+  }
+}
+
+/* ========================================== */
+/* TRACKER STAT CARDS (PROMPT 17)             */
+/* ========================================== */
+
+/* General Card Base */
+.tracker-card {
+  position: relative !important;
+  overflow: hidden !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+/* Hover Translate Lift */
+.tracker-card:hover {
+  transform: scale(1.05) !important;
+}
+
+/* Icon Wrapper */
+.tracker-card-icon-wrapper {
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+/* --- DARK MODE (Default, No Inversion) --- */
+html:not([style*="invert"]) .tracker-card {
+  background-color: #1E293B !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.05),
+    0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
+}
+
+/* Dark Mode Hover Shadows and Glows */
+html:not([style*="invert"]) .tracker-card:hover {
+  box-shadow:
+    0 8px 25px -4px rgba(0, 0, 0, 0.10),
+    0 4px 10px -2px rgba(0, 0, 0, 0.06) !important;
+}
+
+html:not([style*="invert"]) .tracker-card.card-target:hover {
+  box-shadow:
+    0 8px 25px -4px rgba(0, 0, 0, 0.10),
+    0 4px 10px -2px rgba(0, 0, 0, 0.06),
+    0 0 20px rgba(99, 102, 241, 0.15) !important;
+}
+
+html:not([style*="invert"]) .tracker-card.card-worked:hover {
+  box-shadow:
+    0 8px 25px -4px rgba(0, 0, 0, 0.10),
+    0 4px 10px -2px rgba(0, 0, 0, 0.06),
+    0 0 20px rgba(34, 197, 94, 0.15) !important;
+}
+
+html:not([style*="invert"]) .tracker-card.card-remaining:hover {
+  box-shadow:
+    0 8px 25px -4px rgba(0, 0, 0, 0.10),
+    0 4px 10px -2px rgba(0, 0, 0, 0.06),
+    0 0 20px rgba(249, 115, 22, 0.15) !important;
+}
+
+html:not([style*="invert"]) .tracker-card.card-submit:hover {
+  box-shadow:
+    0 8px 25px -4px rgba(0, 0, 0, 0.10),
+    0 4px 10px -2px rgba(0, 0, 0, 0.06),
+    0 0 20px rgba(59, 130, 246, 0.15) !important;
+}
+
+/* Dark Mode Shine Overlay */
+html:not([style*="invert"]) .tracker-card:hover::after {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: -75% !important;
+  width: 50% !important;
+  height: 100% !important;
+  background: linear-gradient(to right,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.08) 50%,
+      rgba(255, 255, 255, 0) 100%) !important;
+  transform: skewX(-25deg) !important;
+  animation: tracker-shine 0.6s ease forwards !important;
+}
+
+
+/* --- LIGHT MODE (Inverted, Source Colors) --- */
+/* Target background in Light Mode: #F8FAFC, inverts from source: #040608 */
+/* Target border in Light Mode: 1px solid #E2E8F0, inverts from source: 1px solid #121820 */
+html[style*="invert"] .tracker-card {
+  background-color: #040608 !important;
+  border: 1px solid #121820 !important;
+  /* Shadow in Light Mode: 0 4px 6px -1px rgba(0, 0, 0, 0.05), inverts from source white shadow */
+  box-shadow:
+    0 4px 6px -1px rgba(255, 255, 255, 0.05),
+    0 2px 4px -1px rgba(255, 255, 255, 0.03) !important;
+}
+
+/* Light Mode Hover Shadows and Glows (source inverted from targets) */
+/* Hover box-shadow in Light Mode: 0 8px 25px -4px rgba(0,0,0,0.1), inverts from source white shadow */
+html[style*="invert"] .tracker-card:hover {
+  box-shadow:
+    0 8px 25px -4px rgba(255, 255, 255, 0.10),
+    0 4px 10px -2px rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Shift Target card: glow is rgba(99, 102, 241, 0.15), inverts from source: rgba(110, 128, 252, 0.15) */
+html[style*="invert"] .tracker-card.card-target:hover {
+  box-shadow:
+    0 8px 25px -4px rgba(255, 255, 255, 0.10),
+    0 4px 10px -2px rgba(255, 255, 255, 0.06),
+    0 0 20px rgba(110, 128, 252, 0.15) !important;
+}
+
+/* Total Worked card: glow is rgba(34, 197, 94, 0.15), inverts from source: rgba(0, 148, 58, 0.15) */
+html[style*="invert"] .tracker-card.card-worked:hover {
+  box-shadow:
+    0 8px 25px -4px rgba(255, 255, 255, 0.10),
+    0 4px 10px -2px rgba(255, 255, 255, 0.06),
+    0 0 20px rgba(0, 148, 58, 0.15) !important;
+}
+
+/* Remaining card: glow is rgba(249, 115, 22, 0.15), inverts from source: rgba(230, 96, 2, 0.15) */
+html[style*="invert"] .tracker-card.card-remaining:hover {
+  box-shadow:
+    0 8px 25px -4px rgba(255, 255, 255, 0.10),
+    0 4px 10px -2px rgba(255, 255, 255, 0.06),
+    0 0 20px rgba(230, 96, 2, 0.15) !important;
+}
+
+/* Final Submit card: glow is rgba(59, 130, 246, 0.15), inverts from source: rgba(68, 138, 254, 0.15) */
+html[style*="invert"] .tracker-card.card-submit:hover {
+  box-shadow:
+    0 8px 25px -4px rgba(255, 255, 255, 0.10),
+    0 4px 10px -2px rgba(255, 255, 255, 0.06),
+    0 0 20px rgba(68, 138, 254, 0.15) !important;
+}
+
+/* Light Mode Shine Overlay (source black shine inverts to white shine) */
+html[style*="invert"] .tracker-card:hover::after {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: -75% !important;
+  width: 50% !important;
+  height: 100% !important;
+  background: linear-gradient(to right,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0.08) 50%,
+      rgba(0, 0, 0, 0) 100%) !important;
+  transform: skewX(-25deg) !important;
+  animation: tracker-shine 0.6s ease forwards !important;
+}
+
+/* Shine Keyframes */
+@keyframes tracker-shine {
+  to {
+    left: 125%;
+  }
+}
+
+/* ========================================== */
+/* AVAILABLE TASKS ROW CARDS (PROMPT 18)      */
+/* ========================================== */
+
+/* General Card Base */
+.tracker-available-task-card {
+  position: relative !important;
+  overflow: hidden !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+/* Hover Translate Lift */
+.tracker-available-task-card:hover {
+  transform: scale(1.01) !important;
+}
+
+/* --- DARK MODE (Default, No Inversion) --- */
+html:not([style*="invert"]) .tracker-available-task-card {
+  background: linear-gradient(145deg, rgba(120, 120, 130, 0.18) 0%, rgba(60, 60, 70, 0.10) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 16px !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04) !important;
+  backdrop-filter: blur(10px) saturate(120%) !important;
+  padding: 14px 16px !important;
+  min-height: 70px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  margin-bottom: 0 !important;
+}
+
+html:not([style*="invert"]) .tracker-card-cloud-wrapper {
+  display: none !important;
+}
+
+/* Dark Mode Hover Shadows and Glows */
+html:not([style*="invert"]) .tracker-available-task-card:hover {
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
+  transform: translateY(-2px) !important;
+  transition: all 0.25s ease !important;
+}
+
+/* Overdue specific red-tinted glass treatment to signal urgency */
+html:not([style*="invert"]) .tracker-available-task-card.status-overdue {
+  border: 1px solid rgba(239, 68, 68, 0.35) !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(239, 68, 68, 0.15) !important;
+}
+
+html:not([style*="invert"]) .tracker-available-task-card.status-overdue:hover {
+  border-color: rgba(239, 68, 68, 0.55) !important;
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    0 0 20px rgba(239, 68, 68, 0.25) !important;
+}
+
+/* Dark Mode Shine Overlay */
+html:not([style*="invert"]) .tracker-available-task-card:hover::after {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: -75% !important;
+  width: 50% !important;
+  height: 100% !important;
+  background: linear-gradient(to right,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.08) 50%,
+      rgba(255, 255, 255, 0) 100%) !important;
+  transform: skewX(-25deg) !important;
+  animation: tracker-shine 0.6s ease forwards !important;
+}
+
+
+/* --- LIGHT MODE (Inverted, Source Colors) --- */
+html[style*="invert"] .tracker-available-task-card {
+  background-color: #000000 !important;
+  /* Inverts to #FFFFFF */
+  border: 1px solid #0F151D !important;
+  /* Inverts to 1px solid #E2E8F0 */
+  border-radius: 16px !important;
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.06) !important;
+  /* Inverts to 0 2px 8px rgba(0, 0, 0, 0.06) */
+  padding: 20px 24px !important;
+  position: relative !important;
+  overflow: hidden !important;
+  min-height: 90px !important;
+  height: auto !important;
+}
+
+/* Reserve space on the left content for the 280px absolute right colored zone */
+html[style*="invert"] .tracker-available-task-card .tracker-card-left-content {
+  padding-right: 0 !important;
+}
+
+/* Right Side Colored Zone */
+html[style*="invert"] .tracker-available-task-card .tracker-card-cloud-wrapper {
+  display: none !important;
+}
+
+/* Cloud Upload Icon Container far right and centered vertically */
+html[style*="invert"] .tracker-available-task-card .tracker-cloud-upload-container {
+  display: none !important;
+}
+
+/* Rotating Color Per Card in Light Mode */
+html[style*="invert"] .tracker-available-task-card.theme-blue {
+  --card-accent-color: #1452DA;
+  /* Target: #2563EB */
+  --card-tint-color: #000611;
+  /* Target: #EEF4FF */
+}
+
+html[style*="invert"] .tracker-available-task-card.theme-green {
+  --card-accent-color: #5CE990;
+  /* Target: #16A34A */
+  --card-tint-color: #021209;
+  /* Target: #EDFDF4 */
+}
+
+html[style*="invert"] .tracker-available-task-card.theme-purple {
+  --card-accent-color: #5412C5;
+  /* Target: #7C3AED */
+  --card-tint-color: #05000F;
+  /* Target: #F5F0FF */
+}
+
+html[style*="invert"] .tracker-available-task-card.theme-cyan {
+  --card-accent-color: #4DD6F7;
+  /* Target: #0891B2 */
+  --card-tint-color: #001213;
+  /* Target: #ECFEFF */
+}
+
+/* Add Task Button Styling in Light Mode */
+html[style*="invert"] .tracker-available-task-card .tracker-add-task-btn {
+  background-color: #000000 !important;
+  /* Inverts to #FFFFFF */
+  color: var(--card-accent-color) !important;
+  /* Inverts to Accent Color */
+  border: 1px solid var(--card-accent-color) !important;
+  /* Inverts to Accent Border */
+  border-radius: 10px !important;
+  padding: 8px 16px !important;
+  height: auto !important;
+  width: auto !important;
+  font-weight: 700 !important;
+  z-index: 15 !important;
+}
+
+html[style*="invert"] .tracker-available-task-card .tracker-add-task-btn:hover:not(:disabled) {
+  filter: brightness(0.92) !important;
+}
+
+html[style*="invert"] .tracker-available-task-card .tracker-add-task-btn:disabled {
+  background-color: #0F172A !important;
+  /* Inverts to light gray */
+  color: #94A3B8 !important;
+  /* Inverts to dark gray/muted text */
+  border: 1px solid #1E293B !important;
+  /* Inverts to light border */
+  cursor: not-allowed !important;
+}
+
+/* Light Mode Hover Shadows */
+html[style*="invert"] .tracker-available-task-card:hover {
+  transform: scale(1.01) !important;
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.10) !important;
+  /* Inverts to 0 4px 12px rgba(0, 0, 0, 0.10) */
+}
+
+/* ========================================== */
+/* SECTION REDESIGN (PROMPT 19 & 22)          */
+/* ========================================== */
+
+/* --- DARK MODE (Default, No Inversion) --- */
+html:not([style*="invert"]) .tracker-top-container {
+  background-color: #1E293B !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3),
+    0 2px 4px -1px rgba(0, 0, 0, 0.2) !important;
+  min-height: 180px !important;
+  height: 180px !important;
+  padding: 20px 24px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+html:not([style*="invert"]) .tracker-inner-stat-card {
+  background: linear-gradient(135deg, #2563EB 0%, #0D9488 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  border-radius: 16px !important;
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    inset 0 0 20px rgba(255, 255, 255, 0.06) !important;
+  backdrop-filter: blur(6px) saturate(140%) !important;
+  padding: 8px 16px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  gap: 2px !important;
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+
+html:not([style*="invert"]) .tracker-inner-stat-card:hover {
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+  transform: translateY(-2px) !important;
+  transition: all 0.25s ease !important;
+}
+
+html:not([style*="invert"]) .tracker-stats-container {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: stretch !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  width: 100% !important;
+}
+
+/* Hide icons in dark mode — match light mode compactness */
+html:not([style*="invert"]) .tracker-inner-stat-card .tracker-card-icon-wrapper {
+  display: none !important;
+}
+
+/* Hide progress bar in dark mode remaining card */
+html:not([style*="invert"]) .tracker-inner-stat-card.card-remaining .h-1\.5,
+html:not([style*="invert"]) .tracker-inner-stat-card.card-remaining [role="progressbar"] {
+  display: none !important;
+}
+
+html:not([style*="invert"]) .tracker-todays-tasks-section,
+html:not([style*="invert"]) .tracker-available-tasks-section {
+  background-color: #1E293B !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3),
+    0 2px 4px -1px rgba(0, 0, 0, 0.2) !important;
+}
+
+html:not([style*="invert"]) .tracker-greeting-title,
+html:not([style*="invert"]) .tracker-todays-tasks-section h2,
+html:not([style*="invert"]) .tracker-todays-tasks-section label,
+html:not([style*="invert"]) .tracker-todays-tasks-section span,
+html:not([style*="invert"]) .tracker-available-tasks-section h2,
+html:not([style*="invert"]) .tracker-available-tasks-section span {
+  color: #F1F5F9 !important;
+}
+
+html:not([style*="invert"]) .tracker-greeting-subtitle {
+  color: #94A3B8 !important;
+}
+
+html:not([style*="invert"]) .tracker-filter-input {
+  background-color: #0F172A !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: #F1F5F9 !important;
+}
+
+/* Dark Mode: Hide Lottie Animation wrapper, new banner illustration, and make greeting full width */
+html:not([style*="invert"]) .tracker-lottie-wrapper,
+html:not([style*="invert"]) .tracker-lottie-container,
+html:not([style*="invert"]) .banner-illustration {
+  display: none !important;
+}
+
+html:not([style*="invert"]) .tracker-top-container .md\:w-\[70\%\] {
+  width: 100% !important;
+}
+
+.tracker-top-container {
+  min-height: 140px !important;
+  overflow: hidden !important;
+  position: relative !important;
+}
+
+/* --- LIGHT MODE (Inverted, Source Colors) --- */
+/* --- LIGHT MODE (Inverted, Source Colors) --- */
+html[style*="invert"] {
+  /* Under filter: invert(1) hue-rotate(180deg), a color hsl(H, S, L) renders as hsl(H, S, 100% - L).
+     To achieve your target light-mode HSL variables, we define their inverted source HSL values here: */
+  --background: 0 0% 0%;
+  /* Inverts to target 0 0% 100% (pure white) */
+  --card: 0 0% 0%;
+  /* Inverts to target 0 0% 100% (pure white) */
+  --input: 0 0% 4%;
+  /* Inverts to target 0 0% 96% (clean light input) */
+  --border: 214 32% 9%;
+  /* Inverts to target 214 32% 91% (light border) */
+  --foreground: 222 47% 89%;
+  /* Inverts to target 222 47% 11% (dark text) */
+  --card-foreground: 222 47% 89%;
+  /* Inverts to target 222 47% 11% (dark text) */
+  --muted: 210 40% 4%;
+  /* Inverts to target 210 40% 96% (light muted bg) */
+  --muted-foreground: 215 16% 53%;
+  /* Inverts to target 215 16% 47% (muted text) */
+  --popover: 0 0% 0%;
+  /* Inverts to target 0 0% 100% (white popover) */
+  --popover-foreground: 222 47% 89%;
+  /* Inverts to target 222 47% 11% (dark popover text) */
+  --accent: 210 40% 4%;
+  /* Inverts to target 210 40% 96% */
+  --accent-foreground: 222 47% 89%;
+  /* Inverts to target 222 47% 11% */
+  --secondary: 210 40% 4%;
+  /* Inverts to target 210 40% 96% */
+  --secondary-foreground: 222 47% 89%;
+  /* Inverts to target 222 47% 11% */
+}
+
+html[style*="invert"] .tracker-top-container {
+  background: linear-gradient(180deg, #177AD4 0%, #578BEF 100%) !important;
+  /* Inverts to linear-gradient(180deg, #2B8EE8 0%, #1044A8 100%) */
+  border: none !important;
+  border-radius: 16px !important;
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.15) !important;
+  /* Inverts to 0 4px 12px rgba(0, 0, 0, 0.15) */
+  height: 180px !important;
+  max-height: 180px !important;
+  min-height: 180px !important;
+  position: relative !important;
+  overflow: hidden !important;
+  padding: 24px 28px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+}
+
+html[style*="invert"] .tracker-top-row {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: flex-start !important;
+}
+
+html[style*="invert"] .tracker-greeting-title {
+  color: #000000 !important;
+  /* Inverts to #FFFFFF */
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  line-height: 1.2 !important;
+}
+
+html[style*="invert"] .tracker-greeting-subtitle {
+  color: rgba(0, 0, 0, 0.7) !important;
+  /* Inverts to rgba(255, 255, 255, 0.7) */
+  font-size: 14px !important;
+  line-height: 1.2 !important;
+}
+
+/* Stats Row flex layout in Light Mode */
+html[style*="invert"] .tracker-stats-container {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: stretch !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  width: 100% !important;
+}
+
+/* Hide separators in Dark Mode (standard grid) */
+html:not([style*="invert"]) .tracker-stat-separator {
+  display: none !important;
+}
+
+/* Hide separators in Light Mode too since cards have their own borders */
+html[style*="invert"] .tracker-stat-separator {
+  display: none !important;
+}
+
+/* Stat Cards in Light Mode */
+html[style*="invert"] .tracker-inner-stat-card {
+  background-color: #000000 !important;
+  /* Inverts to #FFFFFF */
+  border: 1px solid rgba(0, 0, 0, 0.30) !important;
+  /* Inverts to 1px solid rgba(255, 255, 255, 0.30) */
+  border-radius: 10px !important;
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.10) !important;
+  /* Inverts to 0 2px 8px rgba(0, 0, 0, 0.10) */
+  padding: 8px 16px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  gap: 2px !important;
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+
+html[style*="invert"] .tracker-stat-label {
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  color: #74849B !important;
+  /* Inverts to #64748B */
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1.2 !important;
+}
+
+html[style*="invert"] .tracker-stat-value {
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  color: #C4CFE1 !important;
+  /* Inverts to #1E293B */
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1.2 !important;
+}
+
+/* Dropdown styling override for Shift Target select */
+html[style*="invert"] .tracker-inner-stat-card [data-testid="select-shift-hours"] {
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  height: auto !important;
+  color: #C4CFE1 !important;
+  /* Inverts to #1E293B */
+  font-weight: 700 !important;
+  box-shadow: none !important;
+  font-size: 15px !important;
+}
+
+/* Hide icons and progress bar in Light Mode */
+html[style*="invert"] .tracker-card-icon-wrapper {
+  display: none !important;
+}
+
+html[style*="invert"] .tracker-inner-stat-card.card-remaining .h-1\.5,
+html[style*="invert"] .tracker-inner-stat-card.card-remaining [role="progressbar"] {
+  display: none !important;
+}
+
+/* Points, Date, Settings buttons on Dark Background */
+html[style*="invert"] .tracker-top-row [title*="points"] {
+  background-color: rgba(0, 0, 0, 0.15) !important;
+  /* Inverts to rgba(255, 255, 255, 0.15) */
+  border: none !important;
+  color: #000000 !important;
+  /* Inverts to #FFFFFF */
+}
+
+html[style*="invert"] .tracker-top-row [title*="points"] span {
+  color: #000000 !important;
+  /* Inverts to #FFFFFF */
+}
+
+html[style*="invert"] .tracker-top-row [data-testid="button-date-picker"] {
+  background-color: rgba(0, 0, 0, 0.15) !important;
+  /* Inverts to rgba(255, 255, 255, 0.15) */
+  border: none !important;
+  color: #000000 !important;
+  /* Inverts to #FFFFFF */
+}
+
+html[style*="invert"] .tracker-top-row .tracker-settings-button {
+  background-color: rgba(0, 0, 0, 0.15) !important;
+  /* Inverts to rgba(255, 255, 255, 0.15) */
+  border: none !important;
+  color: #000000 !important;
+  /* Inverts to #FFFFFF */
+}
+
+/* Final Submit button card overrides in Light Mode */
+html[style*="invert"] .tracker-inner-stat-card.card-submit {
+  padding: 0 !important;
+  align-items: stretch !important;
+  justify-content: stretch !important;
+  flex-direction: row !important;
+}
+
+html[style*="invert"] .card-submit.submit-active {
+  background-color: #000000 !important;
+  /* Inverts to #FFFFFF */
+  border: 1px solid rgba(0, 0, 0, 0.30) !important;
+  /* Inverts to 1px solid rgba(255, 255, 255, 0.30) */
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.10) !important;
+  /* Inverts to 0 2px 8px rgba(0, 0, 0, 0.10) */
+}
+
+html[style*="invert"] .card-submit.submit-disabled {
+  background-color: rgba(0, 0, 0, 0.20) !important;
+  /* Inverts to rgba(255, 255, 255, 0.20) */
+  border: 1px solid rgba(0, 0, 0, 0.20) !important;
+  /* Inverts to 1px solid rgba(255, 255, 255, 0.20) */
+  box-shadow: none !important;
+}
+
+html[style*="invert"] .tracker-submit-button {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #000000 !important;
+  /* Inverts to #FFFFFF */
+  font-weight: 600 !important;
+  width: 100% !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 8px 16px !important;
+  font-size: 14px !important;
+  opacity: 1 !important;
+  /* Force full opacity */
+}
+
+html[style*="invert"] .card-submit.submit-active .tracker-submit-button {
+  color: #1452DA !important;
+  /* Inverts to #2563EB */
+}
+
+html[style*="invert"] .card-submit.submit-disabled .tracker-submit-button {
+  color: rgba(0, 0, 0, 0.5) !important;
+  /* Inverts to rgba(255, 255, 255, 0.5) */
+  opacity: 1 !important;
+  /* Force full opacity */
+}
+
+/* Right Side Lottie Animation Wrapper and Container in Light Mode */
+html[style*="invert"] .tracker-lottie-wrapper {
+  position: absolute !important;
+  right: 0 !important;
+  top: 0 !important;
+  height: 180px !important;
+  width: 300px !important;
+  overflow: hidden !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  opacity: 1 !important;
+  z-index: 5 !important;
+}
+
+html[style*="invert"] .tracker-lottie-container {
+  width: 100% !important;
+  height: 100% !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  opacity: 1 !important;
+  filter: invert(1) hue-rotate(180deg) !important;
+  /* Cancel global page inversion to show original colors */
+}
+
+@media (min-width: 768px) {
+
+  html[style*="invert"] .tracker-top-row,
+  html[style*="invert"] .tracker-bottom-row {
+    width: calc(100% - 300px) !important;
+  }
+}
+
+@media (max-width: 767px) {
+
+  html[style*="invert"] .tracker-top-row,
+  html[style*="invert"] .tracker-bottom-row {
+    width: 100% !important;
+  }
+
+  html[style*="invert"] .tracker-lottie-wrapper {
+    opacity: 0.15 !important;
+    /* Muted watermark on mobile */
+    pointer-events: none !important;
+  }
+
+  html[style*="invert"] .tracker-lottie-container {
+    opacity: 1 !important;
+  }
+}
+
+/* Other Sections overrides in Light Mode */
+html[style*="invert"] .tracker-todays-tasks-section,
+html[style*="invert"] .tracker-available-tasks-section {
+  background-color: #000000 !important;
+  /* Inverts to #FFFFFF */
+  border: 1px solid #121820 !important;
+  /* Inverts to #E2E8F0 */
+  border-radius: 12px !important;
+  box-shadow: 0 4px 6px -1px rgba(255, 255, 255, 0.05),
+    0 2px 4px -1px rgba(255, 255, 255, 0.03) !important;
+}
+
+html[style*="invert"] .tracker-filter-input {
+  background-color: #000000 !important;
+  /* Inverts to #FFFFFF */
+  border: 1px solid #121820 !important;
+  /* Inverts to #E2E8F0 */
+  color: #FFFFFF !important;
+  /* Inverts to #000000 */
+}
+
+/* Empty task card inside Section 4 overrides */
+html:not([style*="invert"]) .tracker-todays-tasks-section .bg-slate-800\/50 {
+  background-color: #0F172A !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+html[style*="invert"] .tracker-todays-tasks-section .bg-slate-800\/50 {
+  background-color: #000000 !important;
+  /* Inverts to #FFFFFF */
+  border-color: #121820 !important;
+  /* Inverts to #E2E8F0 */
+}
+
+/* ========================================== */
+/* SECTION 3 — CONDITIONAL BANNERS (PROMPT 32) */
+/* ========================================== */
+
+/* Plan-First Workflow Banner in Light Mode */
+html[style*="invert"] .tracker-plan-first-banner {
+  background-color: #000710 !important;
+  /* Inverts to #EFF6FF */
+  border: 1px solid #02346C !important;
+  /* Inverts to 1px solid #93C5FD (stronger blue border) */
+  border-radius: 12px !important;
+}
+
+html[style*="invert"] .tracker-plan-first-title {
+  color: #7591E1 !important;
+  /* Inverts to #1E3A8A (deeper title blue) */
+  font-weight: 700 !important;
+}
+
+html[style*="invert"] .tracker-plan-first-subtitle {
+  color: #2758E2 !important;
+  /* Inverts to #1D4ED8 (clearer subtitle blue) */
+}
+
+html[style*="invert"] .tracker-plan-first-button {
+  background-color: #1452DA !important;
+  /* Inverts to #2563EB */
+  color: #000000 !important;
+  /* Inverts to #FFFFFF */
+  border-radius: 8px !important;
+  border: none !important;
+}
+
+html[style*="invert"] .tracker-plan-first-button:hover {
+  filter: brightness(0.92) !important;
+}
+
+/* PMS Tasks Due Warning Banner in Light Mode */
+html[style*="invert"] .tracker-pms-warning-banner {
+  background-color: #0A0800 !important;
+  /* Inverts to #FFFDF5 (crisp amber-white background) */
+  border: 1px solid #B28903 !important;
+  /* Inverts to 1px solid #FCD34D */
+  border-radius: 12px !important;
+}
+
+html[style*="invert"] .tracker-pms-warning-icon {
+  color: #F49D0A !important;
+  /* Inverts to #F59E0B */
+}
+
+html[style*="invert"] .tracker-pms-warning-title {
+  color: #F19F6D !important;
+  /* Inverts to #92400E */
+  font-weight: 600 !important;
+}
+
+html[style*="invert"] .tracker-pms-warning-list {
+  color: #F0AD87 !important;
+  /* Inverts to #78350F */
+}
+
+/* Also style PMS pending warning elements to match yellow theme */
+html[style*="invert"] .tracker-pms-pending-icon {
+  color: #F49D0A !important;
+}
+
+html[style*="invert"] .tracker-pms-pending-title {
+  color: #F19F6D !important;
+}
+
+html[style*="invert"] .tracker-submit-all-btn {
+  background-color: #F49D0A !important;
+  /* Inverts to #F59E0B */
+  color: #000000 !important;
+  /* Inverts to #FFFFFF */
+  border-radius: 8px !important;
+  border: none !important;
+}
+
+html[style*="invert"] .tracker-submit-all-btn:hover {
+  filter: brightness(0.92) !important;
+}
+
+/* ========================================== */
+/* SECTION 6 — ANALYTICS OVERRIDES (PROMPT 34) */
+/* ========================================== */
+
+/* Outer Analytics Container in Light Mode */
+html[style*="invert"] .tracker-analytics-outer-container {
+  background-color: #000000 !important;
+  /* Inverts to #FFFFFF */
+  border: 1px solid #0F151D !important;
+  /* Inverts to 1px solid #E2E8F0 */
+  border-radius: 12px !important;
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.06) !important;
+  /* Inverts to 0 2px 8px rgba(0, 0, 0, 0.06) */
+  padding: 20px 24px !important;
+}
+
+/* 4 Analytics Card Cards in Light Mode — Option 1 Soft Pastel Set */
+html[style*="invert"] .tracker-analytics-card.card-work-distribution {
+  background-color: #000710 !important;
+  /* Inverts to #EFF6FF */
+  border: 1px solid #011D40 !important;
+  /* Inverts to 1px solid #BFDBFE */
+  border-radius: 12px !important;
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.06) !important;
+  /* Inverts to 0 2px 8px rgba(0, 0, 0, 0.06) */
+}
+
+html[style*="invert"] .tracker-analytics-card.card-tools-usage {
+  background-color: #020F06 !important;
+  /* Inverts to #F0FDF4 */
+  border: 1px solid #08441D !important;
+  /* Inverts to 1px solid #BBF7D0 */
+  border-radius: 12px !important;
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.06) !important;
+  /* Inverts to 0 2px 8px rgba(0, 0, 0, 0.06) */
+}
+
+html[style*="invert"] .tracker-analytics-card.card-task-hours {
+  background-color: #120A00 !important;
+  /* Inverts to #FFF7ED */
+  border: 1px solid #552E01 !important;
+  /* Inverts to 1px solid #FED7AA */
+  border-radius: 12px !important;
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.06) !important;
+  /* Inverts to 0 2px 8px rgba(0, 0, 0, 0.06) */
+}
+
+html[style*="invert"] .tracker-analytics-card.card-hourly-productivity {
+  background-color: #05000F !important;
+  /* Inverts to #F5F0FF */
+  border: 1px solid #080129 !important;
+  /* Inverts to 1px solid #DDD6FE */
+  border-radius: 12px !important;
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.06) !important;
+  /* Inverts to 0 2px 8px rgba(0, 0, 0, 0.06) */
+}
+
+/* ==========================================
+   TASK FORM LIGHT MODE FIXES (PROMPT 37)
+   ========================================== */
+
+/* Form Container */
+html[style*="invert"] .tracker-task-form-card {
+  background-color: #000000 !important;
+  /* Inverts to #FFFFFF */
+  border: 1px solid #0F151D !important;
+  /* Inverts to #E2E8F0 */
+  border-radius: 16px !important;
+  box-shadow: 0 8px 32px rgba(255, 255, 255, 0.12), 0 2px 8px rgba(255, 255, 255, 0.08) !important;
+  /* Inverts to rgba(0, 0, 0, 0.12) and rgba(0, 0, 0, 0.08) */
+  padding: 24px !important;
+}
+
+/* Remove default Card header/content padding in light mode so custom container padding is clean */
+html[style*="invert"] .tracker-task-form-card .pt-0,
+html[style*="invert"] .tracker-task-form-card .pb-4 {
+  padding: 0 !important;
+}
+
+html[style*="invert"] .tracker-task-form-card .pb-4 {
+  margin-bottom: 16px !important;
+}
+
+/* Section Dividers */
+.tracker-form-divider {
+  display: none;
+  /* Hidden in dark mode */
+}
+
+html[style*="invert"] .tracker-form-divider {
+  display: block !important;
+  border: none !important;
+  border-top: 1px solid #060A0E !important;
+  /* Inverts to #F1F5F9 divider line */
+  margin: 16px 0 !important;
+}
+
+/* Labels */
+html[style*="invert"] .tracker-form-label {
+  color: #AEB8C8 !important;
+  /* Inverts to #374151 */
+  font-weight: 600 !important;
+  font-size: 14px !important;
+}
+
+
+
+/* Placeholders inside inputs/textareas */
+html[style*="invert"] .tracker-form-input::placeholder {
+  color: #47566B !important;
+  /* Inverts to #94A3B8 */
+}
+
+
+/* Focus States for Inputs & Dropdown Triggers */
+html[style*="invert"] .tracker-form-input:focus,
+html[style*="invert"] .tracker-form-input:focus-within,
+html[style*="invert"] .tracker-form-input[data-state="open"] {
+  border-color: #1452DA !important;
+  /* Inverts to #2563EB */
+  box-shadow: 0 0 0 3px rgba(20, 82, 218, 0.10) !important;
+  /* Inverts to 0 0 0 3px rgba(37, 99, 235, 0.10) */
+  outline: none !important;
+}
+
+/* Buttons */
+html[style*="invert"] .tracker-btn-save {
+  background: #1452DA !important;
+  /* Inverts to #2563EB */
+  color: #000000 !important;
+  /* Inverts to #FFFFFF */
+  border-radius: 8px !important;
+  border: none !important;
+}
+
+html[style*="invert"] .tracker-btn-save:hover {
+  background: #1d5cf2 !important;
+}
+
+html[style*="invert"] .tracker-btn-cancel {
+  background: #060A0E !important;
+  /* Inverts to #F1F5F9 */
+  color: #AEB8C8 !important;
+  /* Inverts to #374151 */
+  border-radius: 8px !important;
+  border: none !important;
+}
+
+html[style*="invert"] .tracker-btn-start-recording {
+  background-color: #5CE990 !important;
+  /* Inverts to green-600 */
+  color: #000000 !important;
+  /* Inverts to #FFFFFF */
+  border: none !important;
+}
+
+html[style*="invert"] .tracker-btn-start-recording:hover {
+  background-color: #6DF2A1 !important;
+  /* Inverts to green-500 */
+}
+
+html[style*="invert"] .tracker-add-deviation-btn {
+  color: #F49D0A !important;
+  /* Inverts to #F59E0B */
+}
+
+html[style*="invert"] .tracker-add-deviation-btn:hover {
+  color: #F2A83B !important;
+}
+
+/* Tools Used Section Command Search Box */
+html[style*="invert"] .tracker-tools-command {
+  background-color: transparent !important;
+  border: none !important;
+}
+
+html[style*="invert"] .tracker-tools-command [cmdk-input-wrapper] {
+  background-color: #030507 !important;
+  /* Inverts to #F8FAFC */
+  border: 1px solid #0F151D !important;
+  /* Inverts to #E2E8F0 */
+  border-radius: 8px !important;
+}
+
+html[style*="invert"] .tracker-tools-command input {
+  color: #C4CFE1 !important;
+  /* Inverts to #1E293B */
+}
+
+html[style*="invert"] .tracker-tools-command input::placeholder {
+  color: #47566B !important;
+  /* Inverts to #94A3B8 */
+}
+
+/* Tool list items hover */
+html[style*="invert"] .tracker-tools-command [cmdk-item]:hover,
+html[style*="invert"] .tracker-tools-command [cmdk-item][data-selected="true"] {
+  background-color: #000710 !important;
+  /* Inverts to #EFF6FF */
+  color: #C4CFE1 !important;
+  /* Inverts to #1E293B */
+}
+
+/* Tools scrollbar style */
+html[style*="invert"] .tracker-tools-command [cmdk-list] {
+  scrollbar-width: thin !important;
+}
+
+html[style*="invert"] .tracker-tools-command [cmdk-list]::-webkit-scrollbar {
+  width: 4px !important;
+  height: 4px !important;
+}
+
+html[style*="invert"] .tracker-tools-command [cmdk-list]::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+html[style*="invert"] .tracker-tools-command [cmdk-list]::-webkit-scrollbar-thumb {
+  background: #0F151D !important;
+  /* Inverts to #E2E8F0 */
+  border-radius: 4px !important;
+}
+
+/* Select dropdown lists (SelectContent rendering in Portals) */
+html[style*="invert"] .tracker-select-content {
+  background-color: #000000 !important;
+  /* Inverts to #FFFFFF */
+  border: 1px solid #0F151D !important;
+  /* Inverts to #E2E8F0 */
+  border-radius: 8px !important;
+}
+
+html[style*="invert"] .tracker-select-content input {
+  background-color: #030507 !important;
+  /* Inverts to #F8FAFC */
+  border: 1px solid #0F151D !important;
+  /* Inverts to #E2E8F0 */
+  border-radius: 8px !important;
+  color: #C4CFE1 !important;
+  /* Inverts to #1E293B */
+}
+
+html[style*="invert"] .tracker-select-content input::placeholder {
+  color: #47566B !important;
+  /* Inverts to #94A3B8 */
+}
+
+html[style*="invert"] .tracker-select-content .border-b {
+  border-bottom: 1px solid #060A0E !important;
+  /* Inverts to #F1F5F9 */
+}
+
+html[style*="invert"] .tracker-select-content [role="option"],
+html[style*="invert"] .tracker-select-content [role="menuitem"] {
+  color: #C4CFE1 !important;
+  /* Inverts to #1E293B */
+}
+
+html[style*="invert"] .tracker-select-content [role="option"]:focus,
+html[style*="invert"] .tracker-select-content [role="option"][data-highlighted],
+html[style*="invert"] .tracker-select-content [role="option"]:hover {
+  background-color: #000710 !important;
+  /* Inverts to #EFF6FF */
+  color: #C4CFE1 !important;
+  /* Inverts to #1E293B */
+}
+
+/* =====================================================
+   REPORTS PAGE — Light Mode Card Counter-Inversion
+   Colors here are PRE-INVERTED so they appear correct
+   after html filter:invert(1) hue-rotate(180deg).
+   #000000 → appears as #FFFFFF (white)
+   #070809 → appears as #F8F7F6 (off-white)
+   #121820 → appears as #EDE7DF (light border)
+   ===================================================== */
+
+html[style*="invert"] .reports-stat-card,
+html[style*="invert"] .reports-filter-bar,
+html[style*="invert"] .reports-employee-card {
+  background-color: #000000 !important;
+  border: 1px solid #121820 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.06) !important;
+}
+
+html[style*="invert"] .reports-entry-card {
+  background-color: #070809 !important;
+  border: 1px solid #121820 !important;
+  border-radius: 10px !important;
+}
+
+/* =====================================================
+   EOD REPORTS PAGE — Dark Mode Glassmorphism (Prompt 86)
+   Grey steel-glass with inset sheen & deep shadow
+   ===================================================== */
+
+html:not([style*="invert"]) .eod-stat-card {
+  background: linear-gradient(145deg, rgba(120, 120, 130, 0.18) 0%, rgba(60, 60, 70, 0.10) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 16px !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04) !important;
+  backdrop-filter: blur(10px) saturate(120%) !important;
+}
+
+html:not([style*="invert"]) .eod-stat-card:hover {
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
+  transform: translateY(-2px) !important;
+  transition: all 0.25s ease !important;
+}
+
+/* =====================================================
+   MISSING REPORTS PAGE — Dark Mode Glassmorphism (Prompt 87)
+   Same grey steel-glass as EOD Reports for consistency
+   ===================================================== */
+
+html:not([style*="invert"]) .missing-stat-card {
+  background: linear-gradient(145deg, rgba(120, 120, 130, 0.18) 0%, rgba(60, 60, 70, 0.10) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 16px !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04) !important;
+  backdrop-filter: blur(10px) saturate(120%) !important;
+}
+
+html:not([style*="invert"]) .missing-stat-card:hover {
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
+  transform: translateY(-2px) !important;
+  transition: all 0.25s ease !important;
+}
+
+/* =====================================================
+   EOD REPORTS PAGE — Light Mode Card Counter-Inversion
+   Colors here are PRE-INVERTED so they appear correct
+   after html filter:invert(1) hue-rotate(180deg).
+   #000000 → appears as #FFFFFF (white)
+   #000F1F → appears as rose/warm tone (alert card bg)
+   #001428 → appears as rose border (alert card border)
+   ===================================================== */
+
+html[style*="invert"] .eod-stat-card,
+html[style*="invert"] .eod-filter-bar,
+html[style*="invert"] .eod-table-card {
+  background-color: #000000 !important;
+  border: 1px solid #121820 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.06) !important;
+}
+
+html[style*="invert"] .eod-row-card {
+  background-color: #000000 !important;
+  border-bottom: 1px solid #121820 !important;
+}
+
+html[style*="invert"] .eod-alert-card {
+  background-color: #000F1F !important;
+  border: 1px solid #001428 !important;
+  border-radius: 12px !important;
+}
+
+html[style*="invert"] .eod-stat-card svg,
+html[style*="invert"] .eod-stat-card img {
+  filter: invert(1) hue-rotate(180deg) !important;
+}
+
+html[style*="invert"] .eod-card-blue {
+  background-color: #100900 !important;
+  border: 1px solid #0A1D3E !important;
+}
+
+html[style*="invert"] .eod-card-blue svg {
+  color: #D9A000 !important;
+  filter: invert(1) hue-rotate(180deg) !important;
+}
+
+html[style*="invert"] .eod-card-green {
+  background-color: #0F0202 !important;
+  border: 1px solid #0B2D15 !important;
+}
+
+html[style*="invert"] .eod-card-green svg {
+  color: #E95FB5 !important;
+  filter: invert(1) hue-rotate(180deg) !important;
+}
+
+html[style*="invert"] .eod-card-amber {
+  background-color: #000404 !important;
+  border: 1px solid #281500 !important;
+}
+
+html[style*="invert"] .eod-card-amber svg {
+  filter: invert(1) hue-rotate(180deg) !important;
+}
+
+html[style*="invert"] .eod-card-red {
+  background-color: #010D0D !important;
+  border: 1px solid #210000 !important;
+}
+
+html[style*="invert"] .eod-card-red svg {
+  filter: invert(1) hue-rotate(180deg) !important;
+}
+
+html[style*="invert"] .eod-card-purple {
+  background-color: #0A0A00 !important;
+  border: 1px solid #0F0018 !important;
+}
+
+html[style*="invert"] .eod-card-purple svg {
+  filter: invert(1) hue-rotate(180deg) !important;
+}
+
+html[style*="invert"] .eod-card-cyan {
+  background-color: #0F0000 !important;
+  border: 1px solid #0F1600 !important;
+}
+
+html[style*="invert"] .eod-card-cyan svg {
+  filter: invert(1) hue-rotate(180deg) !important;
+}
+
+/* =====================================================
+   REJECTIONS PAGE — Light Mode Card Counter-Inversion
+   Colors here are PRE-INVERTED so they appear correct
+   after html filter:invert(1) hue-rotate(180deg).
+   #000000 → appears as #FFFFFF (white)
+   #121820 → appears as #EDE7DF (light border)
+   ===================================================== */
+
+html[style*="invert"] .rejection-stat-card,
+html[style*="invert"] .rejection-filter-bar,
+html[style*="invert"] .rejection-employee-card {
+  background-color: #000000 !important;
+  border: 1px solid #121820 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Waving Hand Emoji Color Counter-Inversion */
+html[style*="invert"] .emoji-hand {
+  filter: invert(1) hue-rotate(180deg) !important;
+}
+
+html[style*="invert"] .tracker-form-input {
+  background-color: #0A0A0A !important;
+  color: #FFFFFF !important;
+  border-color: #252525 !important;
+  border-radius: 8px !important;
+}
+
+html[style*="invert"] .tracker-form-input::placeholder {
+  color: #888888 !important;
+}
+
+html[style*="invert"] .tracker-form-input *,
+html[style*="invert"] .tracker-form-input span,
+html[style*="invert"] .tracker-form-input p,
+html[style*="invert"] .tracker-form-input div {
+  color: #FFFFFF !important;
+}
+
+/* Time clock icon - blue */
+html[style*="invert"] .time-input-wrapper svg,
+html[style*="invert"] .time-input-wrapper .lucide-clock,
+html[style*="invert"] input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) hue-rotate(180deg) !important;
+  color: #FF7A00 !important;
+}
+
+html[style*="invert"] [data-radix-select-trigger] span,
+html[style*="invert"] [data-radix-select-trigger] *,
+html[style*="invert"] [role="combobox"] span,
+html[style*="invert"] [role="combobox"] * {
+  color: #FFFFFF !important;
+}
+
+html[style*="invert"] .tracker-form-input,
+html[style*="invert"] [data-radix-select-trigger] {
+  background-color: #0A0A0A !important;
+  color: #FFFFFF !important;
+}
+
+html[style*="invert"] .tracker-form-input [data-placeholder],
+html[style*="invert"] [data-radix-select-trigger] [data-placeholder] {
+  color: #777777 !important;
+}
+
+html[style*="invert"] .tracker-form-input>span,
+html[style*="invert"] [data-radix-select-trigger]>span,
+html[style*="invert"] .tracker-form-input span,
+html[style*="invert"] [data-radix-select-trigger] span {
+  color: #FFFFFF !important;
+}
+
+/* Achievements page background */
+html[style*="invert"] .page-bg-fix {
+  background-color: #090A0C !important;
+}
+
+html[style*="invert"] .achievement-tree-wrapper {
+  filter: invert(1) hue-rotate(180deg) !important;
+}
+
+/* All dark cards on achievements page */
+html[style*="invert"] .bg-slate-900\/40,
+html[style*="invert"] .bg-slate-900\/60,
+html[style*="invert"] .bg-slate-900\/80,
+html[style*="invert"] [class*="bg-slate-9"] {
+  background-color: #000000 !important;
+}
+
+/* Stage guide card and achievements card */
+html[style*="invert"] .bg-slate-900 {
+  background-color: #000000 !important;
+}
+
+html[style*="invert"] .text-slate-400,
+html[style*="invert"] .text-slate-500 {
+  color: #555555 !important;
+}
+
+html[style*="invert"] .missing-card-blue {
+  background-color: #100900 !important;
+  border: 1px solid #0A1D3E !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.08) !important;
+}
+
+html[style*="invert"] .missing-card-green {
+  background-color: #0F0202 !important;
+  border: 1px solid #0B2D15 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.08) !important;
+}
+
+html[style*="invert"] .missing-card-red {
+  background-color: #010D0D !important;
+  border: 1px solid #210000 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.08) !important;
+}
+
+html[style*="invert"] .missing-card-amber {
+  background-color: #000404 !important;
+  border: 1px solid #281500 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Icons counter-inversion */
+html[style*="invert"] .missing-card-blue svg,
+html[style*="invert"] .missing-card-green svg,
+html[style*="invert"] .missing-card-red svg,
+html[style*="invert"] .missing-card-amber svg {
+  filter: invert(1) hue-rotate(180deg) !important;
+}
+
+/* ==========================================
+   SIDEBAR DARK MODE ALIGNMENT FIX (PROMPT 73)
+   ========================================== */
+
+/* Fix 1 — Menu item spacing in dark mode (matching light mode) */
+html:not([style*="invert"]) .sidebar-menu-item {
+  padding: 10px 16px !important;
+  margin: 4px 12px !important;
+  height: auto !important;
+  width: auto !important;
+  border-radius: 8px !important;
+  transition: all 0.2s ease !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+}
+
+/* Fix 2 — Active button in dark mode */
+html:not([style*="invert"]) .sidebar-menu-item.active,
+html:not([style*="invert"]) [data-active="true"] {
+  background-color: #2563EB !important;
+  border-radius: 8px !important;
+  margin: 4px 12px !important;
+  font-weight: 600 !important;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35) !important;
+  color: #FFFFFF !important;
+}
+
+/* Fix 3 — Hover state in dark mode */
+html:not([style*="invert"]) .sidebar-menu-item:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  border-radius: 8px !important;
+  margin: 4px 12px !important;
+}
+
+/* Ensure hover does not override active background in dark mode */
+html:not([style*="invert"]) .sidebar-menu-item[data-active="true"]:hover,
+html:not([style*="invert"]) .sidebar-menu-item.active:hover {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Banner content rows — reserve right 30% for illustration in dark mode */
+html:not([style*="invert"]) .tracker-top-row,
+html:not([style*="invert"]) .tracker-bottom-row {
+  width: 70% !important;
+  max-width: 70% !important;
+}
+
+/* Banner illustration visibility */
+/* Light mode — show light, hide dark */
+html[style*="invert"] .banner-illustration {
+  display: block !important;
+  filter: invert(1) hue-rotate(180deg) !important;
+}
+
+html[style*="invert"] .dark-banner-illustration {
+  display: none !important;
+}
+
+/* Dark mode — show dark, hide light */
+html:not([style*="invert"]) .banner-illustration {
+  display: none !important;
+}
+
+html:not([style*="invert"]) .dark-banner-illustration {
+  display: block !important;
+  position: absolute !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 300px !important;
+  height: 220px !important;
+  object-fit: contain !important;
+  object-position: right bottom !important;
+  z-index: 5 !important;
+}
+
+html:not([style*="invert"]) .tracker-top-container {
+  overflow: hidden !important;
+}
+
+/* ==========================================
+   ANALYTICS DASHBOARD GREY GLASS FIX (PROMPT 92)
+   ========================================== */
+
+/* Dark mode only. Applies grey steel-glass background, border, shadow, and blur. */
+html:not([style*="invert"]) .analytics-kpi-card,
+html:not([style*="invert"]) .analytics-weekly-card,
+html:not([style*="invert"]) .tracker-analytics-card,
+html:not([style*="invert"]) .analytics-activity-table-card {
+  background: linear-gradient(145deg, rgba(120, 120, 130, 0.18) 0%, rgba(60, 60, 70, 0.10) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 16px !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04) !important;
+  backdrop-filter: blur(10px) saturate(120%) !important;
+}
+
+/* Hover transform/shadow only for KPI cards and Weekly Summary day cards */
+html:not([style*="invert"]) .analytics-kpi-card:hover,
+html:not([style*="invert"]) .analytics-weekly-card:hover {
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
+  transform: translateY(-2px) !important;
+  transition: all 0.25s ease !important;
+}
+
+/* ==========================================
+   REPORTS PAGE BANNER RESTRICT & GLASS FIX (PROMPT 93)
+   ========================================== */
+
+/* --- DARK MODE (Default, No Inversion) --- */
+html:not([style*="invert"]) .reports-top-container {
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.95) 0%, rgba(20, 28, 42, 0.92) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 16px !important;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(6px) !important;
+  min-height: 180px !important;
+  padding: 20px 24px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+html:not([style*="invert"]) .reports-stat-card {
+  background: linear-gradient(145deg, rgba(45, 55, 72, 0.85) 0%, rgba(30, 41, 59, 0.75) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 16px !important;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(8px) saturate(120%) !important;
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+
+html:not([style*="invert"]) .reports-stat-card:hover {
+  border-color: rgba(255, 255, 255, 0.20) !important;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
+  transform: translateY(-2px) !important;
+  transition: all 0.25s ease !important;
+}
+
+/* --- LIGHT MODE (Inverted, Source Colors) --- */
+html[style*="invert"] .reports-top-container {
+  background-color: #251807 !important;
+  /* inverts to exactly #F1E4D3 — sampled from illustration */
+  border: none !important;
+  border-radius: 16px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
+  min-height: 200px !important;
+  padding: 20px 24px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+/* Prompt 95 — size & position the light-mode illustration precisely */
+html[style*="invert"] .reports-illustration-light {
+  display: block !important;
+  filter: invert(1) hue-rotate(180deg) !important;
+  width: 240px !important;
+  height: 180px !important;
+  right: 16px !important;
+  bottom: 12px !important;
+  top: auto !important;
+  object-fit: contain !important;
+}
+
+/* --- Reports Page Illustration Visibility --- */
+
+/* Light mode: show light illustration, hide dark one */
+html[style*="invert"] .reports-illustration-light {
+  display: block !important;
+}
+
+html[style*="invert"] .reports-illustration-dark {
+  display: none !important;
+}
+
+/* Dark mode: hide light illustration, show dark one */
+html:not([style*="invert"]) .reports-illustration-light {
+  display: none !important;
+}
+
+html:not([style*="invert"]) .reports-illustration-dark {
+  display: block !important;
+}
+
+/* --- Header User Menu Consolidation --- */
+.header-user-avatar-trigger {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  padding: 0;
+}
+
+.header-user-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.header-user-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 13px;
+  background-color: #2563EB;
+  color: #FFFFFF;
+}
+
+.header-user-menu-logout {
+  color: #DC2626 !important;
+}
+
+.header-user-menu-identity {
+  padding: 10px 12px 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.header-user-menu-name {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.header-user-menu-code {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.header-user-menu-badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  background-color: rgba(37, 99, 235, 0.15);
+  color: #2563EB;
+  width: fit-content;
+  text-transform: uppercase;
+}
+
+/* --- Auth Inversion Exclusion --- */
+html[data-theme="light"] .auth-sliding-panel-exclude,
+html[style*="invert"] .auth-sliding-panel-exclude,
+html[data-theme="light"] .auth-btn-exclude,
+html[style*="invert"] .auth-btn-exclude {
+  filter: invert(1) hue-rotate(180deg) !important;
+}
+
+/* Backdrop glow behind auth illustration */
+.auth-illustration-glow {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html[data-theme="light"] .auth-illustration-glow,
+html[style*="invert"] .auth-illustration-glow {
+  background-color: rgba(31, 41, 55, 0.08) !important;
+  /* Inverts to clean light grey glow */
+}
+
+/* Outer Page Background for Auth (Light mode flat light grey) */
+html[data-theme="light"] .auth-page-container,
+html[style*="invert"] .auth-page-container {
+  background: #0f0f11 !important;
+  /* Inverts to flat light grey #f0f0ee */
+}
+
+/* Override browser autofill background/text color inside auth fields */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 100px #1e293b inset !important;
+  -webkit-text-fill-color: #ffffff !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* ==========================================
+   HEADER USER MENU
+   ========================================== */
+
+.header-user-avatar-trigger {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  padding: 0;
+  background: transparent;
+  transition: border-color 0.2s ease;
+}
+
+.header-user-avatar-trigger:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.header-user-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  background: linear-gradient(135deg, #3b4fd8 0%, #6366f1 100%);
+  color: #ffffff;
+  letter-spacing: 0.02em;
+}
+
+.header-user-menu-identity {
+  padding: 10px 12px 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.header-user-menu-name {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.header-user-menu-code {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.header-user-menu-badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  background-color: rgba(37, 99, 235, 0.15);
+  color: #2563EB;
+  width: fit-content;
+  text-transform: capitalize;
+}
+
+.header-user-menu-logout {
+  color: #ef4444 !important;
+  font-weight: 500;
+}
+
+/* ==========================================
+   SITE ENGINEER REPORT SECTION CARDS
+   Reference: box-shadow: 12px 17px 51px rgba(0,0,0,0.22)
+              border: 1px solid white; backdrop-filter: blur(6px)
+   ========================================== */
+
+/* Dark mode — frosted glass lift with visible offset drop-shadow */
+html:not([style*="invert"]) .site-report-card {
+  background: linear-gradient(145deg, rgba(120, 120, 130, 0.18) 0%, rgba(60, 60, 70, 0.10) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 16px !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04) !important;
+  backdrop-filter: blur(10px) saturate(120%) !important;
+  transition: all 0.25s ease !important;
+}
+
+/* Custom subtle orange tint for the Live Site Location card under the glass */
+html:not([style*="invert"]) .site-report-card.site-report-card-location {
+  background: linear-gradient(145deg, rgba(180, 80, 20, 0.15) 0%, rgba(60, 60, 70, 0.10) 100%) !important;
+}
+
+html:not([style*="invert"]) .site-report-card:hover {
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
+  transform: translateY(-2px) !important;
+}
+
+/* Light mode — pre-compensated for invert(1) filter on html:
+   - Shadow: rgba(255,255,255,0.22) pre-invert → renders as dark drop-shadow post-invert
+   - Border: rgba(255,255,255,0.05) pre-invert → renders as a very subtle dark edge post-invert
+*/
+html[style*="invert"] .site-report-card {
+  box-shadow: 12px 17px 51px rgba(255, 255, 255, 0.22) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(6px) !important;
+}
+
+/* ==========================================
+   SPLASH SCREEN LOGO CONTROLS
+   ========================================== */
+
+.splash-logo-dark {
+  width: 280px !important;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 24px auto;
+}
+
+.splash-logo-light {
+  width: 280px !important;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 24px auto;
+}
+
+/* Dark mode: show dark version, hide light */
+html:not([style*="invert"]) .splash-logo-dark { display: block !important; }
+html:not([style*="invert"]) .splash-logo-light { display: none !important; }
+
+/* Light mode: show light version, hide dark */
+html[style*="invert"] .splash-logo-dark { display: none !important; }
+html[style*="invert"] .splash-logo-light { display: block !important; }
+
+/* ==========================================
+   LOGIN CARD DARK MODE DEPTH
+   ========================================== */
+html:not([style*="invert"]) .auth-login-card {
+  box-shadow:
+    0 25px 60px rgba(0, 0, 0, 0.6),
+    0 8px 20px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* ==========================================
+   AVAILABLE TASKS SCROLL CONTAINER
+   ========================================== */
+
+.available-tasks-scroll-container {
+  height: 480px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 6px;
+  scroll-behavior: smooth;
+}
+
+html:not([style*="invert"]) .available-tasks-scroll-container {
+  padding: 4px 4px 4px 2px !important;
+  gap: 10px !important;
+}
+
+/* Slim custom scrollbar */
+.available-tasks-scroll-container::-webkit-scrollbar {
+  width: 4px;
+}
+
+.available-tasks-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.available-tasks-scroll-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+.available-tasks-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.30);
+}
+
+/* ==========================================
+   AVAILABLE TASKS SEARCH BAR
+   ========================================== */
+
+.available-tasks-search-row {
+  margin-bottom: 12px;
+}
+
+.available-tasks-search-input {
+  width: 100%;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.available-tasks-search-input:focus {
+  border-color: #2563EB;
+}
+
+.available-tasks-search-input::placeholder {
+  opacity: 0.45;
+}
+
+/* ==========================================
+   ADMIN SIDEBAR GROUPING
+   ========================================== */
+.sidebar-group {
+  margin-bottom: 4px;
+}
+
+.sidebar-group-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.5;
+  color: inherit;
+}
+
+.sidebar-group-header:hover {
+  opacity: 0.8;
+}
+
+.sidebar-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}

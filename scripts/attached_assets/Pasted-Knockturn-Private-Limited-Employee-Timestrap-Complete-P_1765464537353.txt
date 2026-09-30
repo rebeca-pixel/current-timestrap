@@ -1,0 +1,340 @@
+Knockturn Private Limited – Employee Timestrap (Complete Prompt)
+
+Project name: Knockturn Private Limited – Employee Timestrap
+Company logo: public/assets/logo-knockturn.png (placeholder — add your SVG/PNG at this path)
+
+Tech stack
+
+Frontend: React + Vite + TypeScript
+
+Styling & UI: TailwindCSS, GSAP (animations), Parallax effects
+
+Charts & calendar: Chart.js, React Calendar / Date Picker
+
+Backend: Node.js + Express + TypeScript
+
+Database: PostgreSQL + Drizzle ORM
+
+Misc: Chart.js for analytics, optional Google OAuth integrations later
+
+High-level UX / Theme
+
+Futuristic, black + electric blue glowing UI.
+
+Animated interactions (GSAP): lamp pull on login, full-page rotate for signup/login, parallax scrolling, glowing hover cards, smooth transitions.
+
+Responsive: desktop, tablet, mobile.
+
+LOGIN / SIGNUP (single rotating card UI)
+
+UI
+
+A single card with two faces (front = Login, back = Signup). The card should rotate/flip 180° on Y-axis using GSAP when user toggles between Login and Sign up.
+
+Lamp pull animation on page load (GSAP): user drags a lamp pull → lamp glows → login verification flow begins.
+
+Login form (front face)
+
+Fields:
+
+Employee Code (text) — required
+
+Employee Name (text) — required
+
+Password (password) — required
+
+Buttons:
+
+Login (submit)
+
+Don't have an account? Sign up (triggers full card rotate to Signup face)
+
+Behavior:
+
+On Login → lamp pull glow → call /api/login.
+
+If employee exists: verify password → success → navigate to Tracker Page.
+
+If employee not found: auto-create (if login has name & code provided) OR encourage user to Sign up depending on security preference (include configurable mode). If auto-create is enabled, create employee then navigate to Tracker Page.
+
+Signup form (back face)
+
+Fields:
+
+Sign up Username (text) — required
+
+New Employee Code (text) — required, must be unique
+
+Create Password (password) — required, with strength validation
+
+Confirm Password (password) — required, must match
+
+Buttons:
+
+Create Account
+
+Already have an account? Login (rotates back)
+
+Behavior:
+
+On Create Account: validate fields (password match, unique employee code). On successful creation:
+
+Show success message toast/modal: “Account created successfully.”
+
+Auto-rotate the card back to the Login face (smooth GSAP rotate).
+
+Pre-fill Employee Code and Employee Name on the login face if available.
+
+On failure: show descriptive validation error.
+
+Accessibility & UX
+
+Keyboard focus states, semantic labels, ARIA attributes for flip toggle and forms.
+
+Provide clear error messages and inline validation.
+
+TRACKER PAGE (TimesheetPage.tsx) — Task Sheet with Time Validation
+
+Top header
+
+Company logo + employee name + Logout button.
+
+Calendar / date selector (React Calendar) at header top — date selection should be in Indian Standard Time (Asia/Kolkata). All date-time inputs and server calculations use IST (UTC+05:30).
+
+Daily total & shift
+
+Day shift selector (dropdown or segmented control): 4 Hours, 8 Hours, 12 Hours.
+
+Show Total Working Time for the selected day (recomputed after each task save) and Remaining Time to reach shift hours.
+
+Only when total working time for the selected day ≥ selected shift hours → enable Final Submit (submit timesheet).
+
+Task table / Task sheet
+
+Columns: Project, Title, Description, Tools Used, Start Time, End Time, Duration, % Complete, Actions (Edit, Save, Complete).
+
+Add Task UI (inline or modal):
+
+Project (type-to-add or select) — allow free text with suggestions from /api/projects.
+
+Title (text)
+
+Description (compact textarea)
+
+Tools used (multi-select from canonical list — see Tools list below)
+
+Start Time (auto or manual) — time picker (IST)
+
+End Time (auto or manual) — time picker (IST)
+
+% Completion (number 0–100)
+
+Recording Button: Start Recording / Stop Recording → acts as a timer and sets start/end times automatically. When stopped, allow Save Task.
+
+Time & Date Rules / Validation (strongly enforced both frontend + backend)
+
+No overlapping entries: A new or edited task must not overlap with any existing task time range on the same date (strict non-overlap).
+
+Minimum gap rule: There must be at least 20 minutes between consecutive tasks (i.e., end_time of previous task + 20 minutes ≤ start_time of next task). This prevents same-time immediate back-to-back entries.
+
+No negative duration: end_time must be strictly after start_time. Negative durations are rejected.
+
+No future/past misplacement beyond the selected date: Task times must lie within the selected date (or be allowed by explicit cross-date permission if you later choose to add).
+
+Timezone correctness: All times are interpreted as IST. Clients must send ISO timestamps offset to IST or server will interpret local times as IST.
+
+Prevent manual backdating errors: Disallow entering start_time or end_time earlier than existing times that would break the minimum gap rule.
+
+Same-time entry prevention: If a user tries to create a task whose start_time equals another task’s start_time, reject and show descriptive message.
+
+Editing tasks
+
+Each task row has Edit button → row expands (animated) or opens modal with full editable fields.
+
+On edit save → revalidate all time rules (no overlap, min 20 min gap, positive duration).
+
+Provide Save and Complete actions:
+
+Save persists changes but keeps is_complete = false.
+
+Complete marks is_complete = true and records completed_at. The user should be able to set % Completion before marking complete.
+
+Time recording
+
+Recording Button per task:
+
+Start Recording → sets start_time to now (IST) and starts timer.
+
+Stop Recording → sets end_time to now and calculates duration.
+
+On Stop → automatically run validations (overlap/gap). If invalid, show error and allow manual amendment or cancel.
+
+Manual time & date override
+
+Allow manual override but subject to the same validations. Show real-time warnings when user picks times that would violate rules. Use colored inline messages.
+
+Task persistence & auto-updates
+
+Save tasks to /api/tasks. Page should auto-refresh task list and analytics on task save/delete/complete (websocket or polling).
+
+TOOLS LIST (for multi-select)
+
+Google, Google Calendar, Google Tasks, Google Keep, Zoho Books, Zoho Expenses, Zoho Cliq, Emails, Notes, Notion, MS Office, Excel, Word, Outlook, PPT, Web Browser, Safari, Firefox, Chrome, MS Teams, Canva, Calls/Phone, Meeting with Teams, Meeting Others, ChatGPT, Gemini, Others (free text).
+
+ANALYTICS (Chart.js)
+
+All charts read from PostgreSQL (aggregate queries):
+
+Doughnut chart → Work vs Break vs Tools hours.
+
+Bar chart → Task-wise hours for selected date or range.
+
+Line/Progress chart → Productivity over the day (hourly work seconds).
+
+Tools Usage Pie Chart → count or total duration per tool across tasks.
+
+Show real-time updates after each task is saved/edited/completed.
+
+BACKEND APIs (Node.js + Express)
+
+General
+
+All endpoints validate times using server-side IST logic and enforce gap/overlap/min-duration rules.
+
+Use JWT sessions or secure session cookies for auth.
+
+Endpoints
+
+POST /api/login
+
+Body: { employeeCode, name, password }
+
+Behavior: verify credentials. If not found and AUTO_CREATE_ON_LOGIN=true the system can create employee record. Returns JWT + employee record.
+
+POST /api/signup
+
+Body: { username, employeeCode, password }
+
+Behavior: create employee, enforce unique employeeCode. Respond with success message.
+
+GET /api/employees/:id/timesheet?date=YYYY-MM-DD
+
+Fetch timesheet for given date (create if not exists).
+
+POST /api/tasks
+
+Add a task: { timesheet_id, project, title, description, tools_used[], start_time, end_time, percentage_complete }
+
+Server validates: timezone, no overlaps, >=20 min gap, positive duration. Returns created task.
+
+PUT /api/tasks/:id
+
+Update task with same validations.
+
+POST /api/tasks/:id/complete
+
+Mark task complete; update is_complete, completed_at, and optionally percentage_complete.
+
+GET /api/projects / POST /api/projects
+
+Fetch/add projects.
+
+GET /api/tools / POST /api/tools
+
+Fetch/add tools.
+
+POST /api/submit
+
+Submit timesheet for the selected date only if total_work_seconds >= shift_seconds (based on 4/8/12). Returns success or descriptive error (e.g., Remaining: HH:MM:SS).
+
+DATABASE SCHEMA (PostgreSQL + Drizzle ORM)
+
+employees
+
+id (PK, serial)
+
+employee_id (string, unique) — the Employee Code
+
+name (string)
+
+password_hash (string)
+
+created_at, updated_at
+
+timesheets
+
+id (PK)
+
+employee_id (FK -> employees.id)
+
+date (date, IST date)
+
+total_work_seconds (integer) — aggregated from tasks for day
+
+shift_type (enum: '4','8','12')
+
+is_submitted (boolean)
+
+created_at, updated_at
+
+tasks
+
+id (PK)
+
+timesheet_id (FK -> timesheets.id)
+
+project (string)
+
+title (string)
+
+description (text)
+
+tools_used (text[] or JSONB array)
+
+start_time (timestamp with time zone) — IST normalized
+
+end_time (timestamp with time zone) — IST normalized
+
+duration_seconds (integer)
+
+percentage_complete (integer 0-100)
+
+is_complete (boolean)
+
+created_at, updated_at, completed_at
+
+indices & constraints
+
+Index on timesheets(employee_id, date) unique.
+
+Constraint to ensure end_time > start_time.
+
+Consider DB transaction + application-level check to ensure gap/no-overlap when inserting/updating tasks (use SELECT FOR UPDATE or advisory locks).
+
+Validation Logic (server-side pseudocode summary)
+
+On create/update task:
+
+Convert provided times to IST normalized timestamps.
+
+Ensure end_time > start_time.
+
+Query existing tasks for same timesheet/date:
+
+For each task: ensure new.end_time <= existing.start_time - 20min OR new.start_time >= existing.end_time + 20min (i.e., non-overlap + min gap).
+
+If violation → respond 400 with message (e.g., Task overlaps with Task ID 123 or Minimum 20 minutes gap required between tasks).
+
+If all OK → compute and store duration_seconds and update timesheet total_work_seconds (recompute by summing tasks durations).
+
+Frontend Implementation Notes
+
+Use React + Vite + TypeScript. Organize components: LoginCard.tsx (flip), TimesheetPage.tsx, TaskRow.tsx, TaskEditorModal.tsx, AnalyticsPanel.tsx, Header.tsx.
+
+Animations: GSAP for flip/rotate and lamp pull; Parallax on scroll for background layers.
+
+Use local timezone handling carefully: all inputs should be in IST; show times formatted to hh:mm A with zone label IST.
+
+On task save/complete: optimistic UI update then reconcile from API response.
+
+Use websockets (Socket.IO) or polling to push analytics updates.

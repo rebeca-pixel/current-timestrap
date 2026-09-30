@@ -1,0 +1,216 @@
+# 🆕 **3. ORGANISATION PAGE (NEW)**
+
+A dedicated page for company structure.
+
+### Features:
+
+#### 🔹 **Create Departments**
+
+* Department Name
+* Department Code
+* Description
+* Status (Active/Inactive)
+
+#### 🔹 **Create & Manage Groups**
+
+A group = collection of employees under a department
+Group Fields:
+
+* Group Name
+* Group Lead (employee selector)
+* Department dropdown
+* Add employees to group
+* Remove employees
+* Reassign group lead
+
+#### 🔹 **Hierarchy Visualization**
+
+* Tree view of Departments → Groups → Employees
+* Animated collapsible nodes
+* Click to view department stats
+
+#### 🔹 **Backend APIs**
+
+* POST /api/department
+* GET /api/department
+* POST /api/group
+* GET /api/group
+* PUT /api/department/:id
+* PUT /api/group/:id
+
+#### 🔹 **DB Tables**
+
+departments
+
+* id
+* name
+* code
+* description
+* created_at
+
+groups
+
+* id
+* name
+* department_id
+* group_lead (employee_id)
+
+group_members
+
+* id
+* group_id
+* employee_id
+
+---
+
+# 🆕 **4. USER CREATION PAGE (ADMIN ONLY)**
+
+Admin can create new users manually.
+
+### Fields:
+
+* Employee Name
+* Employee Code
+* Password
+* Role (Admin / Manager / Employee)
+* Department
+* Group
+
+### Behaviours:
+
+* Auto-assign department & group
+* Create user & show success popup
+* Validation for duplicate employeeCode
+
+### API:
+
+* POST /api/admin/create-user
+* GET /api/admin/users
+* PUT /api/admin/users/:id
+
+### DB Changes:
+
+employees table add:
+
+* role ENUM(‘admin’, ‘manager’, ‘employee’)
+* department_id
+* group_id
+
+---
+
+# 🆕 **5. APPROVAL PAGE (MANAGER VIEW)**
+
+Managers approve the timesheets of employees under their group/department.
+
+### Workflow:
+
+1. Employee submits timesheet
+2. Manager sees:
+
+   * Pending Timesheets
+   * Submitted Date
+   * Total Hours
+   * Tasks Overview
+
+### Approval Actions:
+
+* Approve
+* Reject (with reason)
+* Return for correction
+
+### API:
+
+* GET /api/manager/pending-timesheets
+* POST /api/manager/approve
+* POST /api/manager/reject
+
+### DB Changes:
+
+timesheets table add:
+
+* approval_status: PENDING / APPROVED / REJECTED
+* approved_by
+* approved_at
+* rejection_reason
+
+---
+
+# 🆕 **6. ADMINISTRATION PAGE (SUPER ADMIN VIEW)**
+
+A control center for the entire platform.
+
+### Admin Features:
+
+#### 🔹 Manage Employees
+
+* View list
+* Edit employee info
+* Reset password
+* Change role (Admin / Manager / Employee)
+
+#### 🔹 Manage Organisation Structure
+
+* Departments
+* Groups
+* Group members
+
+#### 🔹 Audit Logs
+
+Track actions like:
+
+* User creation
+* Time edits
+* Approvals
+* Logins
+
+#### 🔹 System Settings:
+
+* Auto-create user on login: ON/OFF
+* Approval workflow: ON/OFF
+* Shift templates
+* Default tools list
+
+### API:
+
+* GET /api/admin/stats
+* GET /api/admin/logs
+* PUT /api/admin/settings
+
+# 🎯 **FINAL OUTCOME OF UPDATED PROMPT**
+
+You now have a **complete enterprise-level timesheet + organisation management system** with:
+
+* Login / Signup
+* Employee timesheet tracking
+* Dept & group hierarchy
+* User creation (Admin)
+* Manager approvals
+* Admin console
+* Analytics dashboard
+* RBAC permissions
+* Full IST-based time validation
+* Smooth futuristic UI
+
+---
+
+# ⚡ Want me to generate the **Replit-ready folder structure & actual code** for:
+
+### ✔️ Organisation Page
+
+### ✔️ User Creation Page
+
+### ✔️ Approval Page
+
+### ✔️ Admin Page
+
+### ✔️ Updated DB schema + backend routes
+
+### ✔️ Navigation + Protected Routes (RBAC)
+
+### ✔️ Full UI components (React + Tailwind)?
+
+Just say:
+
+### **"Generate full Replit code for all new pages"**
+
+And I will output the entire project files ready to paste.

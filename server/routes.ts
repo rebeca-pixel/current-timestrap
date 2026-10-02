@@ -1733,6 +1733,85 @@ export async function registerRoutes(
     }
   });
 
+  // Manual approve for one employee + one date, from the Admin Approval tab.
+  // Entries are approved only when they satisfy the saved approval conditions; the rest are
+  // reported back with the exact reasons and left unchanged.
+  app.post("/api/time-entries/admin-review/approve-date", async (req, res) => {
+    try {
+      const { adminId, employeeId, date, startDate, endDate } = req.body || {};
+      const admin = await loadReviewAdmin(adminId);
+      if (!admin) return res.status(403).json({ error: "Only admins can approve from the Admin Approval tab" });
+
+      const rangeError = validateReviewRange(startDate, endDate);
+      if (rangeError) return res.status(400).json({ error: rangeError });
+      if (typeof employeeId !== "string" || !employeeId) return res.status(400).json({ error: "Employee is required" });
+      if (typeof date !== "string" || !ADMIN_REVIEW_DATE_RE.test(date) || date < startDate || date > endDate) {
+        return res.status(400).json({ error: "Date is outside the selected range" });
+      }
+
+      const employee = await storage.getEmployee(employeeId);
+      if (!employee) return res.status(404).json({ error: "Employee not found" });
+
+      const rules = await getTimesheetRules();
+      const raw = (await storage.getTimeEntriesByEmployeeAndDate(employeeId, date))
+        .filter((e) => e.employeeId === employeeId && e.status !== "draft");
+      if (raw.length === 0) return res.status(404).json({ error: "No submitted timesheet entries on this date" });
+
+      if (rules.keyStep.approve && raw.some((e) => !e.keyStep && (e.pmsId || e.pmsSubtaskId))) {
+        try {
+          await pmsPool.query("SELECT 1");
+        } catch {
+          return res.status(503).json({ error: "PMS is unreachable, so Key Step cannot be verified right now. Please try again shortly." });
+        }
+      }
+      const entries = await batchEnrichEntries(raw);
+
+      const results = await Promise.all(entries.map(async (e) => {
+        const labels = reviewEntryLabels(e);
+        const currentStatus = e.status || "pending";
+        if (currentStatus === "approved") {
+          return { id: e.id, ...labels, result: "skipped", currentStatus, reasons: ["Already approved — not changed"] };
+        }
+        if (!ADMIN_REVIEW_ELIGIBLE.includes(currentStatus)) {
+          return { id: e.id, ...labels, result: "skipped", currentStatus, reasons: [`Currently ${currentStatus.replace("_", " ")} — cannot be approved`] };
+        }
+        const problems = validateWithRules(e, rules, "approve");
+        if (problems.length > 0) {
+          return { id: e.id, ...labels, result: "blocked", currentStatus, reasons: problems };
+        }
+        const updated = await storage.adminApproveTimeEntry(e.id, admin.id);
+        if (updated) broadcast("time_entry_updated", updated);
+        return { id: e.id, ...labels, result: "approved", currentStatus: "approved", reasons: [] as string[] };
+      }));
+
+      const approvedCount = results.filter((r) => r.result === "approved").length;
+      if (approvedCount > 0) {
+        runInBackground("admin-manual-approve-email", async () => {
+          const dayTasks = await storage.getTimeEntriesByEmployeeAndDate(employeeId, date);
+          if (dayTasks.length > 0 && dayTasks.every((t) => t.status === "approved")) {
+            const { sendApprovalSummaryEmail } = await import("./email");
+            const defaultRecipients = (process.env.SENDER_EMAIL || "").split(",").map((s) => s.trim()).filter(Boolean);
+            await sendApprovalSummaryEmail({
+              employeeId,
+              employeeName: employee.name,
+              employeeCode: employee.employeeCode,
+              date,
+              tasks: dayTasks,
+              status: "approved",
+              recipients: employee.email ? [...defaultRecipients, employee.email] : defaultRecipients,
+              approverName: admin.name,
+            });
+          }
+        });
+      }
+
+      res.json({ date, employeeId, entries: results });
+    } catch (error) {
+      console.error("Admin manual approve error:", error);
+      res.status(500).json({ error: "Failed to approve timesheet" });
+    }
+  });
+
   // Manual reject for one employee + one date, from the Admin Approval tab.
   app.post("/api/time-entries/admin-review/reject-date", async (req, res) => {
     try {

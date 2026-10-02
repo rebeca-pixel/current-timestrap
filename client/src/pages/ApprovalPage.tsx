@@ -764,6 +764,23 @@ export default function ApprovalPage({ user }: { user: User }) {
                       {/* LMS Hours Summary (if any) */}
                       <LMSHoursDisplay employeeCode={entry.employeeCode} date={entry.date} />
 
+                      {/* Status History Trail — only shown when resubmitted so approvers see context */}
+                      {entry.status === 'resubmitted' && (
+                        <div className="flex items-center gap-1.5 mb-3 bg-orange-500/5 border border-orange-500/20 rounded-lg px-3 py-2">
+                          <span className="text-[9px] font-bold text-orange-400 uppercase tracking-wide mr-1">History:</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-400 border border-yellow-500/20 font-medium">Submitted</span>
+                          <span className="text-orange-500/40 text-xs">→</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/20 font-medium">Rejected</span>
+                          <span className="text-orange-500/40 text-xs">→</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/40 font-bold animate-pulse">Resubmitted</span>
+                          {entry.rejectionReason && (
+                            <span className="ml-auto text-[9px] text-red-400/70 italic truncate max-w-[200px]" title={entry.rejectionReason}>
+                              Prior reason: {entry.rejectionReason}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
                       {/* Projects & Task Brief */}
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs mb-3">
                         <div className="bg-slate-900/60 p-2 rounded-lg border border-blue-500/10">
@@ -1595,6 +1612,48 @@ function AdminApprovalPanel({ user }: { user: User }) {
   const [rejectReason, setRejectReason] = useState('');
   const [busyKey, setBusyKey] = useState<string | null>(null); // `${action}:${employeeId}:${date}`
 
+  // Default rejection reason — typed once, saved persistently, auto-fills every Reject dialog
+  const { data: defaultReasonData } = useQuery<{ defaultRejectionReason: string }>({
+    queryKey: ['/api/settings/default-rejection-reason'],
+  });
+  const savedDefaultReason = defaultReasonData?.defaultRejectionReason || '';
+  const [draftDefaultReason, setDraftDefaultReason] = useState<string | null>(null);
+  const defaultReasonDirty = draftDefaultReason !== null && draftDefaultReason !== savedDefaultReason;
+  const saveDefaultReasonMutation = useMutation({
+    mutationFn: async (reason: string) => {
+      const res = await apiRequest('PATCH', '/api/settings/default-rejection-reason', { adminId: user.id, reason });
+      return await res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['/api/settings/default-rejection-reason'], data);
+      setDraftDefaultReason(null);
+      toast({ title: 'Default rejection reason saved', description: 'It will pre-fill the Reject dialog from now on.' });
+    },
+    onError: (err: any) =>
+      toast({ title: 'Could not save', description: String(err?.message || err), variant: 'destructive' }),
+  });
+
+  // Default approval note — typed once, saved persistently, shown inside the green Approval box
+  const { data: defaultApprovalNoteData } = useQuery<{ defaultApprovalNote: string }>({
+    queryKey: ['/api/settings/default-approval-note'],
+  });
+  const savedApprovalNote = defaultApprovalNoteData?.defaultApprovalNote || '';
+  const [draftApprovalNote, setDraftApprovalNote] = useState<string | null>(null);
+  const approvalNoteDirty = draftApprovalNote !== null && draftApprovalNote !== savedApprovalNote;
+  const saveApprovalNoteMutation = useMutation({
+    mutationFn: async (note: string) => {
+      const res = await apiRequest('PATCH', '/api/settings/default-approval-note', { adminId: user.id, note });
+      return await res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['/api/settings/default-approval-note'], data);
+      setDraftApprovalNote(null);
+      toast({ title: 'Approval note saved', description: 'It will appear in the Conditions for Approval box.' });
+    },
+    onError: (err: any) =>
+      toast({ title: 'Could not save', description: String(err?.message || err), variant: 'destructive' }),
+  });
+
   const { data: employees = [] } = useQuery<any[]>({ queryKey: ['/api/employees'] });
   const activeEmployees = useMemo(
     () => employees.filter(e => e.isActive !== false).sort((a, b) => String(a.name).localeCompare(String(b.name))),
@@ -1846,7 +1905,7 @@ function AdminApprovalPanel({ user }: { user: User }) {
 
         {/* Exact conditions for Approval and Rejection (read from the saved rules) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="rounded-lg border border-green-500/25 bg-green-500/5 p-3">
+          <div className="rounded-lg border border-green-500/25 bg-green-500/5 p-3 space-y-2">
             <p className="text-xs font-bold uppercase text-green-400 mb-1.5 flex items-center gap-1.5"><Check className="w-3.5 h-3.5" /> Conditions for Approval</p>
             <p className="text-[11px] text-blue-200/60 mb-2">An entry is approved only when it is submitted (status pending, resubmitted or manager approved) and ALL of these are met:</p>
             {approvalConditions.length === 0 ? (
@@ -1856,14 +1915,88 @@ function AdminApprovalPanel({ user }: { user: User }) {
                 {approvalConditions.map((c, i) => <li key={i}>{c}</li>)}
               </ul>
             )}
+            {/* Custom approval note — typed by admin, saved persistently */}
+            <div className="mt-3 pt-3 border-t border-green-500/20 space-y-2">
+              <p className="text-[11px] font-semibold text-green-300 uppercase tracking-wide">Custom Approval Note</p>
+              <p className="text-[10px] text-green-200/50">Add any extra condition or message here. It will be saved and always shown inside this box as a reminder.</p>
+              <Textarea
+                rows={3}
+                placeholder="e.g. Ensure all tasks have at least 80% completion before approving."
+                value={draftApprovalNote ?? savedApprovalNote}
+                onChange={(e) => setDraftApprovalNote(e.target.value)}
+                className="bg-green-950/30 border-green-500/30 text-green-100 placeholder:text-green-400/40 text-xs resize-none focus:border-green-400/60"
+              />
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  className="h-7 text-[11px] px-3 bg-green-700 hover:bg-green-600 text-white"
+                  disabled={!approvalNoteDirty || saveApprovalNoteMutation.isPending}
+                  onClick={() => saveApprovalNoteMutation.mutate(draftApprovalNote ?? savedApprovalNote)}
+                >
+                  {saveApprovalNoteMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Check className="w-3 h-3 mr-1" />}
+                  Save
+                </Button>
+                {approvalNoteDirty && (
+                  <Button size="sm" variant="ghost" className="h-7 text-[11px] px-2 text-green-300"
+                    onClick={() => setDraftApprovalNote(null)}>
+                    Discard
+                  </Button>
+                )}
+                {savedApprovalNote && !approvalNoteDirty && (
+                  <span className="text-[10px] text-green-400/70 flex items-center gap-1">
+                    <Check className="w-3 h-3" /> Saved
+                  </span>
+                )}
+              </div>
+              {/* Show the saved note prominently if one exists */}
+              {savedApprovalNote && !approvalNoteDirty && (
+                <div className="bg-green-500/10 border border-green-500/25 rounded p-2 text-[11px] text-green-200/80 whitespace-pre-wrap">
+                  {savedApprovalNote}
+                </div>
+              )}
+            </div>
           </div>
-          <div className="rounded-lg border border-red-500/25 bg-red-500/5 p-3">
+          <div className="rounded-lg border border-red-500/25 bg-red-500/5 p-3 space-y-2">
             <p className="text-xs font-bold uppercase text-red-400 mb-1.5 flex items-center gap-1.5"><X className="w-3.5 h-3.5" /> Conditions for Rejection</p>
             <ul className="list-disc list-inside space-y-0.5 text-[11px] text-red-100/90">
               <li>Automatic: an eligible entry is rejected when ANY approval condition on the left is not met. The exact failed conditions are saved as the rejection reason and emailed to the employee.</li>
               <li>Manual: the Reject button on an employee's date rejects every non-rejected entry of that date. A written reason is mandatory.</li>
               <li>Not changed: drafts and entries already approved, rejected or on hold are skipped.</li>
             </ul>
+            {/* Default rejection reason — saved text auto-fills every Reject dialog */}
+            <div className="mt-3 pt-3 border-t border-red-500/20 space-y-2">
+              <p className="text-[11px] font-semibold text-red-300 uppercase tracking-wide">Default Rejection Reason</p>
+              <p className="text-[10px] text-red-200/50">Type a standard rejection message here. It will automatically pre-fill the reason field every time you click Reject.</p>
+              <Textarea
+                rows={3}
+                placeholder="e.g. Timesheet is incomplete — please fill in all required fields and resubmit."
+                value={draftDefaultReason ?? savedDefaultReason}
+                onChange={(e) => setDraftDefaultReason(e.target.value)}
+                className="bg-red-950/30 border-red-500/30 text-red-100 placeholder:text-red-400/40 text-xs resize-none focus:border-red-400/60"
+              />
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  className="h-7 text-[11px] px-3 bg-red-600 hover:bg-red-500 text-white"
+                  disabled={!defaultReasonDirty || saveDefaultReasonMutation.isPending}
+                  onClick={() => saveDefaultReasonMutation.mutate(draftDefaultReason ?? savedDefaultReason)}
+                >
+                  {saveDefaultReasonMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Check className="w-3 h-3 mr-1" />}
+                  Save
+                </Button>
+                {defaultReasonDirty && (
+                  <Button size="sm" variant="ghost" className="h-7 text-[11px] px-2 text-red-300"
+                    onClick={() => setDraftDefaultReason(null)}>
+                    Discard
+                  </Button>
+                )}
+                {savedDefaultReason && !defaultReasonDirty && (
+                  <span className="text-[10px] text-green-400/70 flex items-center gap-1">
+                    <Check className="w-3 h-3" /> Saved
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2038,7 +2171,7 @@ function AdminApprovalPanel({ user }: { user: User }) {
                             Approve
                           </Button>
                           <Button size="sm" variant="destructive" disabled={!canReject || !!busyKey} className="h-8 text-xs px-4"
-                            onClick={() => { setRejectTarget({ employeeId: r.employeeId, date: d.date }); setRejectReason(''); }}>
+                            onClick={() => { setRejectTarget({ employeeId: r.employeeId, date: d.date }); setRejectReason(savedDefaultReason); }}>
                             {rejecting ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <X className="w-3.5 h-3.5 mr-1.5" />}
                             Reject
                           </Button>

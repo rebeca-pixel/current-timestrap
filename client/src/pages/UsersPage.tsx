@@ -159,6 +159,39 @@ export default function UsersPage({ user }: UsersPageProps) {
     timeguardSuggestionsMutation.mutate(!timeguardSuggestionsEnabled);
   };
 
+  // Global Auto Reject toggle
+  const { data: autoRejectSetting, isLoading: loadingAutoRejectSetting } = useQuery<{ autoRejectEnabled: boolean }>({
+    queryKey: ['/api/settings/auto-reject'],
+  });
+  const autoRejectEnabled = autoRejectSetting?.autoRejectEnabled === true;
+
+  const autoRejectMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const response = await apiRequest('PATCH', '/api/settings/auto-reject', { enabled });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/settings/auto-reject'] });
+      toast({
+        title: data.autoRejectEnabled ? 'Auto Reject Enabled' : 'Auto Reject Disabled',
+        description: data.autoRejectEnabled
+          ? 'Invalid timesheets within 24 hours will be auto-rejected.'
+          : 'Timesheet auto-rejection is now disabled.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Failed to update setting',
+        description: error.message || 'Could not update the Auto Reject setting.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleToggleAutoReject = () => {
+    autoRejectMutation.mutate(!autoRejectEnabled);
+  };
+
   const filteredUsers = employees.filter(u =>
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.employeeCode.toLowerCase().includes(searchQuery.toLowerCase())
@@ -261,22 +294,41 @@ export default function UsersPage({ user }: UsersPageProps) {
         </Card>
       </div>
 
-      <Card className="bg-slate-800/50 border-blue-500/20 p-4" data-testid="card-timeguard-suggestions-setting">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium text-white">TimeGuard Suggestions</p>
-            <p className="text-xs text-blue-200/60">
-              When enabled, all users can use "✨ Suggest from TimeGuard" to auto-fill task descriptions from tracked activity. When disabled, this is hidden for everyone.
-            </p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card className="bg-slate-800/50 border-blue-500/20 p-4" data-testid="card-timeguard-suggestions-setting">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-white">TimeGuard Suggestions</p>
+              <p className="text-xs text-blue-200/60">
+                When enabled, all users can use "✨ Suggest from TimeGuard" to auto-fill task descriptions from tracked activity. When disabled, this is hidden for everyone.
+              </p>
+            </div>
+            <Switch
+              checked={timeguardSuggestionsEnabled}
+              disabled={loadingTimeguardSetting || timeguardSuggestionsMutation.isPending}
+              onCheckedChange={handleToggleTimeguardSuggestions}
+              data-testid="switch-timeguard-suggestions"
+            />
           </div>
-          <Switch
-            checked={timeguardSuggestionsEnabled}
-            disabled={loadingTimeguardSetting || timeguardSuggestionsMutation.isPending}
-            onCheckedChange={handleToggleTimeguardSuggestions}
-            data-testid="switch-timeguard-suggestions"
-          />
-        </div>
-      </Card>
+        </Card>
+
+        <Card className="bg-slate-800/50 border-blue-500/20 p-4" data-testid="card-auto-reject-setting">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-white">Auto Reject Timesheets</p>
+              <p className="text-xs text-blue-200/60">
+                When enabled, a timesheet that fails validation within the 24-hour submission period is rejected automatically and the employee is emailed the reason. When disabled, the submission is only blocked.
+              </p>
+            </div>
+            <Switch
+              checked={autoRejectEnabled}
+              disabled={loadingAutoRejectSetting || autoRejectMutation.isPending}
+              onCheckedChange={handleToggleAutoReject}
+              data-testid="switch-auto-reject"
+            />
+          </div>
+        </Card>
+      </div>
 
       <Card className="bg-slate-800/50 border-blue-500/20">
         <CardHeader className="pb-4">

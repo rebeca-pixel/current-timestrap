@@ -239,3 +239,28 @@ export function normalizeValidationRules(input: any): ValidationRules {
     scopeOfImprovements: toggle("scopeOfImprovements"),
   };
 }
+
+// ---------- 24-hour submission period ----------
+// Timesheet validation (and the admin "Auto Reject" switch) only applies while an entry is inside its
+// submission period. For a work date the period is the 24 hours of that date; for a rejected entry that is
+// being re-applied it is the 24 hours after the rejection. Outside the period nothing is validated here.
+export const SUBMISSION_WINDOW_HOURS = 24;
+
+export function submissionWindowEnd(workDate: string, rejectedAt?: Date | string | null): Date {
+  const start = new Date(`${String(workDate).slice(0, 10)}T00:00:00`);
+  let end = start.getTime() + SUBMISSION_WINDOW_HOURS * 3600 * 1000;
+  if (rejectedAt) {
+    const r = new Date(rejectedAt).getTime();
+    if (Number.isFinite(r)) end = Math.max(end, r + SUBMISSION_WINDOW_HOURS * 3600 * 1000);
+  }
+  return new Date(end);
+}
+
+export function isWithinSubmissionWindow(
+  workDate: string,
+  now: Date = new Date(),
+  rejectedAt?: Date | string | null
+): boolean {
+  const end = submissionWindowEnd(workDate, rejectedAt);
+  return Number.isFinite(end.getTime()) && now.getTime() < end.getTime();
+}

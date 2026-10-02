@@ -27,7 +27,7 @@ import { getLMSHours, getODExemption, isWithinApprovedOD, getEffectivePlanCutoff
 import { registerVoiceRoutes } from "./voice";
 import { format, parseISO, eachDayOfInterval, isSameDay } from "date-fns";
 import { sendEmail } from "./email";
-import { validateWithRules, normalizeValidationRules, DEFAULT_VALIDATION_RULES, type ValidationRules } from "@shared/timesheetValidation";
+import { validateWithRules, normalizeValidationRules, DEFAULT_VALIDATION_RULES, isWithinSubmissionWindow, type ValidationRules } from "@shared/timesheetValidation";
 import bcrypt from "bcryptjs";
 import { registerGoogleCalendarRoutes } from "./googleCalendar";
 
@@ -2410,17 +2410,55 @@ export async function registerRoutes(
         return res.status(404).json({ error: "No tasks found for this date" });
       }
 
-      // Every entry being submitted must satisfy the shared mandatory-field rules.
-      // Already-final entries are left out of the check (this endpoint only moves drafts to pending).
+      // Every entry being submitted must satisfy the shared mandatory-field rules, but ONLY while the
+      // 24-hour submission period is open. Rejected entries are included so a successful submit clears them.
       const submitRules = await getTimesheetRules();
+      const nowForWindow = new Date();
       const invalidEntries = entries
-        .filter(e => e.status === 'draft' || e.status === 'pending' || e.status === 'resubmitted')
+        .filter(e => e.status === 'draft' || e.status === 'pending' || e.status === 'resubmitted' || e.status === 'rejected')
+        .filter(e => isWithinSubmissionWindow(date, nowForWindow, e.status === 'rejected' ? e.approvedAt : null))
         .map(e => ({ entry: e, problems: validateWithRules(e, submitRules, "submit") }))
         .filter(x => x.problems.length > 0);
       if (invalidEntries.length > 0) {
         const detail = invalidEntries
           .map(x => `${x.entry.projectName || 'Task'} (${x.entry.startTime}-${x.entry.endTime}): ${x.problems.join(', ')}`)
           .join(' | ');
+
+        // Admin "Auto Reject" switch: reject the invalid entries and e-mail the employee the reasons.
+        // When it is OFF the submission is simply blocked (nothing changes, nobody is e-mailed).
+        const autoSettings = await readSettings();
+        if (autoSettings.autoRejectEnabled === true) {
+          const reasonFor = (x: { problems: string[] }) => `Auto rejected: ${x.problems.join("; ")}`;
+          const rejectedNow = await Promise.all(
+            invalidEntries.map(x => storage.updateTimeEntryStatus(x.entry.id, "rejected", undefined, reasonFor(x)))
+          );
+          rejectedNow.forEach(u => { if (u) broadcast("time_entry_updated", u); });
+          const autoEmployee = await storage.getEmployee(employeeId);
+          if (autoEmployee?.email) {
+            runInBackground("auto-reject-email", async () => {
+              const { sendAdminReviewRejectionEmail } = await import('./email');
+              const result = await sendAdminReviewRejectionEmail({
+                employeeName: autoEmployee.name,
+                employeeCode: autoEmployee.employeeCode,
+                date,
+                items: invalidEntries.map(x => {
+                  const labels = reviewEntryLabels(x.entry);
+                  return { ...labels, reasons: x.problems };
+                }),
+                approverName: "Auto Reject (System)",
+                recipients: [autoEmployee.email as string],
+              });
+              if (!result?.success) console.error(`[EMAIL] auto reject email failed for ${date}`);
+            });
+          }
+          return res.status(400).json({
+            error: "Timesheet auto rejected",
+            autoRejected: true,
+            message: `Timesheet auto rejected. Reasons: ${detail}. Please correct and resubmit. The reasons were also sent to your email.`,
+            invalidEntries: invalidEntries.map(x => ({ id: x.entry.id, problems: x.problems })),
+          });
+        }
+
         return res.status(400).json({
           error: "Incomplete timesheet",
           message: `Timesheet cannot be submitted. Fix these first: ${detail}`,
@@ -2516,6 +2554,16 @@ export async function registerRoutes(
         "UPDATE time_entries SET status = 'pending' WHERE employee_id = $1 AND date = $2 AND status = 'draft'",
         [employeeId, date]
       );
+      // A successful submission also clears this date's rejected entries from the Rejections list
+      // (they become 'resubmitted' and wait for review again).
+      const clearedRejected = await pool.query(
+        "UPDATE time_entries SET status = 'resubmitted', rejection_reason = NULL, submitted_at = NOW() WHERE employee_id = $1 AND date = $2 AND status = 'rejected' RETURNING *",
+        [employeeId, date]
+      );
+      if (clearedRejected.rowCount) {
+        const refreshed = await storage.getTimeEntriesByEmployeeAndDate(employeeId, date);
+        refreshed.forEach(e => broadcast("time_entry_updated", e));
+      }
 
       // use the raw entries as tasks so the email helper has full data
       const tasks = dailyEntries;
@@ -2921,7 +2969,15 @@ export async function registerRoutes(
       if (!existing) {
         return res.status(404).json({ error: "Time entry not found" });
       }
-      const resubmitProblems = validateWithRules({ ...existing, ...(req.body || {}) }, await getTimesheetRules(), "submit");
+      // Validated only inside the 24-hour period (from the work date, or from the rejection for rejected entries).
+      const resubmitInWindow = isWithinSubmissionWindow(
+        String(existing.date),
+        new Date(),
+        existing.status === 'rejected' ? existing.approvedAt : null
+      );
+      const resubmitProblems = resubmitInWindow
+        ? validateWithRules({ ...existing, ...(req.body || {}) }, await getTimesheetRules(), "submit")
+        : [];
       if (resubmitProblems.length > 0) {
         return res.status(400).json({
           error: `Cannot resubmit: ${resubmitProblems.join("; ")}`,
@@ -2935,6 +2991,48 @@ export async function registerRoutes(
       }
       broadcast("time_entry_updated", entry);
       res.json(entry);
+
+      // Notify admin/HR and the employee that a resubmission has been filed.
+      runInBackground("resubmit-emails", async () => {
+        try {
+          const employee = await storage.getEmployee(entry.employeeId);
+          const allTasks = await storage.getTimeEntriesByEmployeeAndDate(entry.employeeId, String(entry.date));
+          const { sendTimesheetSummaryEmail, sendTimesheetConfirmationEmail } = await import('./email');
+
+          // 1. Notify admin / HR (same audience as the initial submission)
+          await sendTimesheetSummaryEmail({
+            employeeId: entry.employeeId,
+            employeeName: entry.employeeName,
+            employeeCode: entry.employeeCode,
+            date: String(entry.date),
+            totalHours: allTasks.reduce((s, t) => s + (t.totalHours ? 1 : 0), 0).toString(),
+            tasks: allTasks,
+            status: 'resubmitted' as any,
+          }).catch(e => console.error("[EMAIL] resubmit summary email failed", e));
+
+          // 2. Confirmation back to the employee
+          if (employee?.email) {
+            await sendTimesheetConfirmationEmail({
+              employeeName: employee.name,
+              employeeCode: employee.employeeCode,
+              employeeEmail: employee.email,
+              date: String(entry.date),
+              totalHours: entry.totalHours || "—",
+              tasks: allTasks.map(t => ({
+                projectName: t.projectName || "—",
+                taskDescription: t.taskDescription || "—",
+                totalHours: t.totalHours || "—",
+                status: t.status || "resubmitted",
+                startTime: t.startTime,
+                endTime: t.endTime,
+                percentageComplete: t.percentageComplete,
+              })),
+            }).catch(e => console.error("[EMAIL] resubmit confirmation email failed", e));
+          }
+        } catch (emailErr) {
+          console.error("[EMAIL] resubmit notification failed:", emailErr);
+        }
+      });
     } catch (error) {
       console.error("Resubmit entry error:", error);
       res.status(500).json({ error: "Failed to resubmit entry" });
@@ -4443,7 +4541,91 @@ export async function registerRoutes(
     }
   });
 
-  // Get timesheet blocking settings
+  // ============ AUTO REJECT TOGGLE (Admin > Settings) ============
+  app.get('/api/settings/auto-reject', async (_req, res) => {
+    try {
+      const settings = await readSettings();
+      res.json({ autoRejectEnabled: settings.autoRejectEnabled === true });
+    } catch (error) {
+      console.error('[SETTINGS] Failed to read auto reject:', error);
+      res.status(500).json({ error: 'Failed to get auto reject setting' });
+    }
+  });
+
+  app.patch('/api/settings/auto-reject', async (req, res) => {
+    try {
+      const admin = await loadReviewAdmin(req.body?.adminId);
+      if (!admin) return res.status(403).json({ error: 'Only admins can change Auto Reject' });
+      if (typeof req.body?.enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be true or false' });
+      const settings = await readSettings();
+      settings.autoRejectEnabled = req.body.enabled;
+      const success = await writeSettings(settings);
+      if (!success) return res.status(500).json({ error: 'Failed to write settings' });
+      broadcast('settings_updated', { autoRejectEnabled: settings.autoRejectEnabled });
+      res.json({ autoRejectEnabled: settings.autoRejectEnabled });
+    } catch (error) {
+      console.error('[SETTINGS] Failed to update auto reject:', error);
+      res.status(500).json({ error: 'Failed to update auto reject setting' });
+    }
+  });
+
+  // ============ DEFAULT REJECTION REASON (saved text pre-fills the Reject dialog) ============
+  app.get('/api/settings/default-rejection-reason', async (_req, res) => {
+    try {
+      const settings = await readSettings();
+      res.json({ defaultRejectionReason: settings.defaultRejectionReason || '' });
+    } catch (error) {
+      console.error('[SETTINGS] Failed to read default rejection reason:', error);
+      res.status(500).json({ error: 'Failed to get default rejection reason' });
+    }
+  });
+
+  app.patch('/api/settings/default-rejection-reason', async (req, res) => {
+    try {
+      const admin = await loadReviewAdmin(req.body?.adminId);
+      if (!admin) return res.status(403).json({ error: 'Only admins can change this setting' });
+      if (typeof req.body?.reason !== 'string') return res.status(400).json({ error: 'reason must be a string' });
+      const settings = await readSettings();
+      settings.defaultRejectionReason = req.body.reason.trim();
+      const success = await writeSettings(settings);
+      if (!success) return res.status(500).json({ error: 'Failed to write settings' });
+      broadcast('settings_updated', { defaultRejectionReason: settings.defaultRejectionReason });
+      res.json({ defaultRejectionReason: settings.defaultRejectionReason });
+    } catch (error) {
+      console.error('[SETTINGS] Failed to update default rejection reason:', error);
+      res.status(500).json({ error: 'Failed to update default rejection reason' });
+    }
+  });
+
+  // ============ DEFAULT APPROVAL NOTE (saved text shown inside the Approval conditions box) ============
+  app.get('/api/settings/default-approval-note', async (_req, res) => {
+    try {
+      const settings = await readSettings();
+      res.json({ defaultApprovalNote: settings.defaultApprovalNote || '' });
+    } catch (error) {
+      console.error('[SETTINGS] Failed to read default approval note:', error);
+      res.status(500).json({ error: 'Failed to get default approval note' });
+    }
+  });
+
+  app.patch('/api/settings/default-approval-note', async (req, res) => {
+    try {
+      const admin = await loadReviewAdmin(req.body?.adminId);
+      if (!admin) return res.status(403).json({ error: 'Only admins can change this setting' });
+      if (typeof req.body?.note !== 'string') return res.status(400).json({ error: 'note must be a string' });
+      const settings = await readSettings();
+      settings.defaultApprovalNote = req.body.note.trim();
+      const success = await writeSettings(settings);
+      if (!success) return res.status(500).json({ error: 'Failed to write settings' });
+      broadcast('settings_updated', { defaultApprovalNote: settings.defaultApprovalNote });
+      res.json({ defaultApprovalNote: settings.defaultApprovalNote });
+    } catch (error) {
+      console.error('[SETTINGS] Failed to update default approval note:', error);
+      res.status(500).json({ error: 'Failed to update default approval note' });
+    }
+  });
+
+
   app.get('/api/settings/timesheet-blocking', async (req, res) => {
     try {
       const settings = await readSettings();

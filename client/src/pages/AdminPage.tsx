@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -6,12 +6,12 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { 
-  Shield, 
-  Users, 
-  Clock, 
-  CheckSquare, 
-  Settings, 
+import {
+  Shield,
+  Users,
+  Clock,
+  CheckSquare,
+  Settings,
   Activity,
   AlertCircle,
   RefreshCw,
@@ -51,6 +51,7 @@ const mockSettings = {
 export default function AdminPage({ user }: AdminPageProps) {
   const [settings, setSettings] = useState(mockSettings);
   const [activeTab, setActiveTab] = useState('overview');
+
 
   const updateSetting = (key: string, value: boolean | number) => {
     setSettings({ ...settings, [key]: value });
@@ -132,24 +133,24 @@ export default function AdminPage({ user }: AdminPageProps) {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="bg-slate-800/50 border border-blue-500/20">
-          <TabsTrigger 
-            value="overview" 
+          <TabsTrigger
+            value="overview"
             className="data-[state=active]:bg-blue-600"
             data-testid="tab-overview"
           >
             <Shield className="w-4 h-4 mr-2" />
             Overview
           </TabsTrigger>
-          <TabsTrigger 
-            value="audit" 
+          <TabsTrigger
+            value="audit"
             className="data-[state=active]:bg-blue-600"
             data-testid="tab-audit"
           >
             <Activity className="w-4 h-4 mr-2" />
             Audit Logs
           </TabsTrigger>
-          <TabsTrigger 
-            value="settings" 
+          <TabsTrigger
+            value="settings"
             className="data-[state=active]:bg-blue-600"
             data-testid="tab-settings"
           >
@@ -166,8 +167,8 @@ export default function AdminPage({ user }: AdminPageProps) {
               </CardHeader>
               <CardContent className="space-y-4">
                 {mockAuditLogs.slice(0, 4).map(log => (
-                  <div 
-                    key={log.id} 
+                  <div
+                    key={log.id}
                     className="flex items-start gap-3 p-3 bg-slate-700/30 rounded-lg border border-blue-500/10"
                   >
                     <Activity className="w-4 h-4 text-blue-400 mt-0.5" />
@@ -194,7 +195,7 @@ export default function AdminPage({ user }: AdminPageProps) {
                   </div>
                   <Badge className="bg-green-500/20 text-green-400">Healthy</Badge>
                 </div>
-                
+
                 <div className="flex items-center justify-between p-3 bg-green-500/10 rounded-lg border border-green-500/20">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-green-500" />
@@ -202,7 +203,7 @@ export default function AdminPage({ user }: AdminPageProps) {
                   </div>
                   <Badge className="bg-green-500/20 text-green-400">Operational</Badge>
                 </div>
-                
+
                 <div className="flex items-center justify-between p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-yellow-500" />
@@ -233,8 +234,8 @@ export default function AdminPage({ user }: AdminPageProps) {
                   </TableHeader>
                   <TableBody>
                     {mockAuditLogs.map(log => (
-                      <TableRow 
-                        key={log.id} 
+                      <TableRow
+                        key={log.id}
                         className="border-blue-500/10 hover:bg-slate-700/30"
                       >
                         <TableCell className="text-sm text-blue-200/60 font-mono">
@@ -271,7 +272,7 @@ export default function AdminPage({ user }: AdminPageProps) {
                     Automatically create new employee accounts when they first login
                   </p>
                 </div>
-                <Switch 
+                <Switch
                   checked={settings.autoCreateOnLogin}
                   onCheckedChange={(v) => updateSetting('autoCreateOnLogin', v)}
                   data-testid="switch-auto-create"
@@ -285,7 +286,7 @@ export default function AdminPage({ user }: AdminPageProps) {
                     Require manager approval for submitted timesheets
                   </p>
                 </div>
-                <Switch 
+                <Switch
                   checked={settings.approvalWorkflow}
                   onCheckedChange={(v) => updateSetting('approvalWorkflow', v)}
                   data-testid="switch-approval-workflow"
@@ -299,7 +300,7 @@ export default function AdminPage({ user }: AdminPageProps) {
                     Send email notifications for approvals and submissions
                   </p>
                 </div>
-                <Switch 
+                <Switch
                   checked={settings.emailNotifications}
                   onCheckedChange={(v) => updateSetting('emailNotifications', v)}
                   data-testid="switch-email-notifications"

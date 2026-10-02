@@ -95,14 +95,14 @@ export default function RejectionsPage({ user }: RejectionsPageProps) {
   };
 
   const filteredEntries = timeEntries.filter(entry => {
-    // ONLY show rejected and resubmitted items
+    // Show rejected AND resubmitted entries (resubmitted = employee responded to rejection)
     if (entry.status !== 'rejected' && entry.status !== 'resubmitted') return false;
 
     const matchesSearch =
       entry.employeeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       entry.employeeCode.toLowerCase().includes(searchQuery.toLowerCase());
 
-    // For status filter, 'all' on this page means 'rejected' + 'resubmitted'
+    // Status filter: 'all' shows both rejected and resubmitted
     const matchesStatus = statusFilter === 'all' || entry.status === statusFilter;
 
     let matchesDate = true;
@@ -244,7 +244,7 @@ export default function RejectionsPage({ user }: RejectionsPageProps) {
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Rejections</SelectItem>
+                <SelectItem value="all">All (Rejected + Resubmitted)</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
                 <SelectItem value="resubmitted">Resubmitted</SelectItem>
               </SelectContent>
@@ -473,6 +473,7 @@ export default function RejectionsPage({ user }: RejectionsPageProps) {
               durationMinutes: durationMinutes,
               pmsId: editingEntry.pmsId || undefined,
               pmsSubtaskId: editingEntry.pmsSubtaskId || undefined,
+              isComplete: false,
             };
 
             return (

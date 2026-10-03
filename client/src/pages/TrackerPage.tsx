@@ -734,7 +734,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
     !isOnLeaveToday &&
     todaysTasksOnly.length > 0 &&
     (hasEnoughHours || settings.forceAllowFinalSubmit) &&
-    !hasInvalidTasks &&
+    (!hasInvalidTasks || settings.forceAllowFinalSubmit) &&
     !hasRejectedTasks;
 
   // Human-readable reason the Final Submit button is disabled, so the actual
@@ -747,7 +747,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
     if (needsPlan) return "You haven't submitted today's Plan for the Day yet.";
     if (todaysTasksOnly.length === 0) return 'No tasks logged yet for this date. Please fill in your tasks first.';
     if (hasRejectedTasks) return 'You have rejected task(s) that must be fixed and re-submitted before Final Submit.';
-    if (hasInvalidTasks) {
+    if (hasInvalidTasks && !settings.forceAllowFinalSubmit) {
       const firstItem = invalidTasksDetails[0];
       const taskName = firstItem?.task?.title || 'Task';
       const firstError = firstItem?.errors[0] || 'Missing required fields';

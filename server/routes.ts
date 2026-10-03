@@ -2413,58 +2413,63 @@ export async function registerRoutes(
 
       // Every entry being submitted must satisfy the shared mandatory-field rules, but ONLY while the
       // 24-hour submission period is open. Rejected entries are included so a successful submit clears them.
-      const submitRules = await getTimesheetRules();
-      const nowForWindow = new Date();
-      const invalidEntries = entries
-        .filter(e => e.status === 'draft' || e.status === 'pending' || e.status === 'resubmitted' || e.status === 'rejected')
-        .filter(e => isWithinSubmissionWindow(date, nowForWindow, e.status === 'rejected' ? e.approvedAt : null))
-        .map(e => ({ entry: e, problems: validateWithRules(e, submitRules, "submit") }))
-        .filter(x => x.problems.length > 0);
-      if (invalidEntries.length > 0) {
-        const detail = invalidEntries
-          .map(x => `${x.entry.projectName || 'Task'} (${x.entry.startTime}-${x.entry.endTime}): ${x.problems.join(', ')}`)
-          .join(' | ');
+      // When Force Submit is ON, ALL field validation is bypassed — entries submit as-is.
+      const currentSettings = await readSettings();
+      const forceAllowFinalSubmit = !!currentSettings.forceAllowFinalSubmit;
 
-        // Admin "Auto Reject" switch: reject the invalid entries and e-mail the employee the reasons.
-        // When it is OFF the submission is simply blocked (nothing changes, nobody is e-mailed).
-        const autoSettings = await readSettings();
-        if (autoSettings.autoRejectEnabled === true) {
-          const reasonFor = (x: { problems: string[] }) => `Auto rejected: ${x.problems.join("; ")}`;
-          const rejectedNow = await Promise.all(
-            invalidEntries.map(x => storage.updateTimeEntryStatus(x.entry.id, "rejected", undefined, reasonFor(x)))
-          );
-          rejectedNow.forEach(u => { if (u) broadcast("time_entry_updated", u); });
-          const autoEmployee = await storage.getEmployee(employeeId);
-          if (autoEmployee?.email) {
-            runInBackground("auto-reject-email", async () => {
-              const { sendAdminReviewRejectionEmail } = await import('./email');
-              const result = await sendAdminReviewRejectionEmail({
-                employeeName: autoEmployee.name,
-                employeeCode: autoEmployee.employeeCode,
-                date,
-                items: invalidEntries.map(x => {
-                  const labels = reviewEntryLabels(x.entry);
-                  return { ...labels, reasons: x.problems };
-                }),
-                approverName: "Auto Reject (System)",
-                recipients: [autoEmployee.email as string],
+      if (!forceAllowFinalSubmit) {
+        const submitRules = await getTimesheetRules();
+        const nowForWindow = new Date();
+        const invalidEntries = entries
+          .filter(e => e.status === 'draft' || e.status === 'pending' || e.status === 'resubmitted' || e.status === 'rejected')
+          .filter(e => isWithinSubmissionWindow(date, nowForWindow, e.status === 'rejected' ? e.approvedAt : null))
+          .map(e => ({ entry: e, problems: validateWithRules(e, submitRules, "submit") }))
+          .filter(x => x.problems.length > 0);
+        if (invalidEntries.length > 0) {
+          const detail = invalidEntries
+            .map(x => `${x.entry.projectName || 'Task'} (${x.entry.startTime}-${x.entry.endTime}): ${x.problems.join(', ')}`)
+            .join(' | ');
+
+          // Admin "Auto Reject" switch: reject the invalid entries and e-mail the employee the reasons.
+          // When it is OFF the submission is simply blocked (nothing changes, nobody is e-mailed).
+          if (currentSettings.autoRejectEnabled === true) {
+            const reasonFor = (x: { problems: string[] }) => `Auto rejected: ${x.problems.join("; ")}`;
+            const rejectedNow = await Promise.all(
+              invalidEntries.map(x => storage.updateTimeEntryStatus(x.entry.id, "rejected", undefined, reasonFor(x)))
+            );
+            rejectedNow.forEach(u => { if (u) broadcast("time_entry_updated", u); });
+            const autoEmployee = await storage.getEmployee(employeeId);
+            if (autoEmployee?.email) {
+              runInBackground("auto-reject-email", async () => {
+                const { sendAdminReviewRejectionEmail } = await import('./email');
+                const result = await sendAdminReviewRejectionEmail({
+                  employeeName: autoEmployee.name,
+                  employeeCode: autoEmployee.employeeCode,
+                  date,
+                  items: invalidEntries.map(x => {
+                    const labels = reviewEntryLabels(x.entry);
+                    return { ...labels, reasons: x.problems };
+                  }),
+                  approverName: "Auto Reject (System)",
+                  recipients: [autoEmployee.email as string],
+                });
+                if (!result?.success) console.error(`[EMAIL] auto reject email failed for ${date}`);
               });
-              if (!result?.success) console.error(`[EMAIL] auto reject email failed for ${date}`);
+            }
+            return res.status(400).json({
+              error: "Timesheet auto rejected",
+              autoRejected: true,
+              message: `Timesheet auto rejected. Reasons: ${detail}. Please correct and resubmit. The reasons were also sent to your email.`,
+              invalidEntries: invalidEntries.map(x => ({ id: x.entry.id, problems: x.problems })),
             });
           }
+
           return res.status(400).json({
-            error: "Timesheet auto rejected",
-            autoRejected: true,
-            message: `Timesheet auto rejected. Reasons: ${detail}. Please correct and resubmit. The reasons were also sent to your email.`,
+            error: "Incomplete timesheet",
+            message: `Timesheet cannot be submitted. Fix these first: ${detail}`,
             invalidEntries: invalidEntries.map(x => ({ id: x.entry.id, problems: x.problems })),
           });
         }
-
-        return res.status(400).json({
-          error: "Incomplete timesheet",
-          message: `Timesheet cannot be submitted. Fix these first: ${detail}`,
-          invalidEntries: invalidEntries.map(x => ({ id: x.entry.id, problems: x.problems })),
-        });
       }
 
       // Enrich entries with PMS data (dates, key steps etc)
@@ -2524,10 +2529,6 @@ export async function registerRoutes(
       const lmsData = await getLMSHours(employee.employeeCode, date);
       const totalLMSMinutes = Math.round(lmsData.totalLMSHours * 60);
       const combinedMinutes = totalMinutes + totalLMSMinutes;
-
-      // Read force-allow setting so admins can bypass the 8-hour check
-      const currentSettings = await readSettings();
-      const forceAllowFinalSubmit = !!currentSettings.forceAllowFinalSubmit;
 
       // 2. Working Hours Validation (Enforce 8 hours, unless force-submit is on)
       const REQUIRED_MINUTES = 8 * 60; // 8 hours

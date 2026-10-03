@@ -707,21 +707,26 @@ export default function TrackerPage({ user }: TrackerPageProps) {
   const REQUIRED_MINUTES = 8 * 60;
   const hasEnoughHours = totalCombinedMinutes >= REQUIRED_MINUTES;
 
-  // Check if any rejected tasks need rectification
+  // Check if any rejected tasks need rectification (across all dates/entries)
   const hasRejectedTasks = useMemo(() => {
-    return todaysTasksOnly.some(t => t.serverStatus === 'rejected');
-  }, [todaysTasksOnly]);
+    return serverEntries.some(e => e.status === 'rejected') || allTasks.some(t => t.serverStatus === 'rejected');
+  }, [serverEntries, allTasks]);
 
-  // Check if any draft tasks are missing required fields
-  const hasInvalidDraftTasks = useMemo(() => {
-    const draftTasks = todaysTasksOnly.filter(t => t.serverStatus === 'draft');
-    return draftTasks.some(t => {
-      const hasProject = !!t.project;
-      const hasTitle = !!t.title;
-      const hasTimes = !!t.startTime && !!t.endTime;
-      return !hasProject || !hasTitle || !hasTimes || validateWithRules(t, validationRules, 'submit').length > 0;
-    });
+  // Check details of ALL tasks logged for today to ensure required fields & rules are fulfilled
+  const invalidTasksDetails = useMemo(() => {
+    if (todaysTasksOnly.length === 0) return [];
+    return todaysTasksOnly.map(t => {
+      const missing: string[] = [];
+      if (!t.project) missing.push('Project');
+      if (!t.title) missing.push('Title');
+      if (!t.startTime || !t.endTime) missing.push('Start/End Time');
+      const ruleErrors = validateWithRules(t, validationRules, 'submit');
+      ruleErrors.forEach(err => missing.push(err));
+      return { task: t, errors: missing };
+    }).filter(item => item.errors.length > 0);
   }, [todaysTasksOnly, validationRules]);
+
+  const hasInvalidTasks = invalidTasksDetails.length > 0;
 
   const canSubmit =
     !isSubmitting &&
@@ -729,7 +734,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
     !isOnLeaveToday &&
     todaysTasksOnly.length > 0 &&
     (hasEnoughHours || settings.forceAllowFinalSubmit) &&
-    !hasInvalidDraftTasks &&
+    !hasInvalidTasks &&
     !hasRejectedTasks;
 
   // Human-readable reason the Final Submit button is disabled, so the actual
@@ -740,25 +745,20 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       ? 'You have a pending leave request today, so the timesheet for this date is blocked.'
       : 'You are on leave today, so the timesheet for this date is blocked.';
     if (needsPlan) return "You haven't submitted today's Plan for the Day yet.";
-    if (todaysTasksOnly.length === 0) return 'No tasks logged yet for this date.';
-    if (hasRejectedTasks) return 'You have rejected task(s) that must be rectified before submitting.';
-    if (hasInvalidDraftTasks) {
-      const draftTasks = todaysTasksOnly.filter(t => t.serverStatus === 'draft');
-      const missing = new Set<string>();
-      draftTasks.forEach(t => {
-        if (!t.project) missing.add('project');
-        if (!t.title) missing.add('title');
-        if (!t.startTime || !t.endTime) missing.add('start/end time');
-        validateWithRules(t, validationRules, 'submit').forEach(p => missing.add(p));
-      });
-      return `One or more draft tasks have issues: ${Array.from(missing).join(', ')}. Edit them to fix this.`;
+    if (todaysTasksOnly.length === 0) return 'No tasks logged yet for this date. Please fill in your tasks first.';
+    if (hasRejectedTasks) return 'You have rejected task(s) that must be fixed and re-submitted before Final Submit.';
+    if (hasInvalidTasks) {
+      const firstItem = invalidTasksDetails[0];
+      const taskName = firstItem?.task?.title || 'Task';
+      const firstError = firstItem?.errors[0] || 'Missing required fields';
+      return `Incomplete task details (${invalidTasksDetails.length} task(s) invalid). ${taskName}: ${firstError}. Edit to fix.`;
     }
     if (!hasEnoughHours && !settings.forceAllowFinalSubmit) {
       const remaining = REQUIRED_MINUTES - totalCombinedMinutes;
       return `Minimum 8 hours required to Final Submit. You need ${formatDuration(remaining)} more logged (${formatDuration(totalCombinedMinutes)} / 8h 00m logged).`;
     }
     return null;
-  }, [isSubmitting, isOnLeaveToday, leaveStatusData?.status, needsPlan, todaysTasksOnly, hasRejectedTasks, hasInvalidDraftTasks, hasEnoughHours, settings.forceAllowFinalSubmit, totalCombinedMinutes]);
+  }, [isSubmitting, isOnLeaveToday, leaveStatusData?.status, needsPlan, todaysTasksOnly, hasRejectedTasks, hasInvalidTasks, invalidTasksDetails, hasEnoughHours, settings.forceAllowFinalSubmit, totalCombinedMinutes]);
 
 
   const handleSaveTask = async (taskData: Task) => {
@@ -918,20 +918,12 @@ export default function TrackerPage({ user }: TrackerPageProps) {
         return;
       }
 
-      // Validate all draft tasks (both pending local and server draft entries)
-      const tasksToValidate = todaysTasksOnly.filter(t => t.serverStatus === 'draft');
-      const invalidTasks = tasksToValidate.filter(t => {
-        const hasProject = !!t.project;
-        const hasTitle = !!t.title;
-        const hasTimes = !!t.startTime && !!t.endTime;
-        return !hasProject || !hasTitle || !hasTimes || validateWithRules(t, validationRules, 'submit').length > 0;
-      });
-
-      if (invalidTasks.length > 0) {
-        const firstProblems = validateWithRules(invalidTasks[0], validationRules, 'submit');
+      // Validate all tasks for today
+      if (hasInvalidTasks) {
+        const firstItem = invalidTasksDetails[0];
         toast({
           title: 'Incomplete Tasks',
-          description: `${invalidTasks.length} task(s) fail validation. ${invalidTasks[0].title || 'First task'}: ${firstProblems.join('; ') || 'Project, Task and Start/End Time are required'}.`,
+          description: `${invalidTasksDetails.length} task(s) fail validation or are missing required fields. ${firstItem?.task?.title || 'Task'}: ${firstItem?.errors?.join('; ') || 'Project, Title and Start/End Time are required'}.`,
           variant: 'destructive'
         });
         setIsSubmitting(false);

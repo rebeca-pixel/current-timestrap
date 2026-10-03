@@ -727,7 +727,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
         if (!t.startTime || !t.endTime) missing.add('start/end time');
         validateWithRules(t, validationRules, 'submit').forEach(p => missing.add(p));
       });
-      return `One or more draft tasks are missing: ${Array.from(missing).join(', ')}. Edit them to fill these in.`;
+      return `One or more draft tasks have issues: ${Array.from(missing).join(', ')}. Edit them to fix this.`;
     }
     if (!hasEnoughHours && !settings.forceAllowFinalSubmit) {
       const remaining = REQUIRED_MINUTES - totalCombinedMinutes;

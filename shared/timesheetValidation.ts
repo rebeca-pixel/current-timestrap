@@ -101,16 +101,17 @@ function checkText(label: string, value: unknown, p: TextParams): string | null 
       return `${label} must be at least ${TIMESHEET_MIN_CHARS} characters (currently ${text.length})`;
     }
     if (isGibberish(text)) return `${label} must be meaningful, not repeated characters`;
-  }
-  const words = wordCount(text);
-  if (p.maxWords && p.maxWords > 0 && words > p.maxWords) {
-    return `${label} must be at most ${p.maxWords} words (currently ${words})`;
-  }
-  if (p.mandatory && p.minWords && words < p.minWords) {
-    return `${label} must be a meaningful explanation (at least ${p.minWords} words)`;
-  }
-  if (p.mandatory && p.needsNumber && !/\d/.test(text) && !NUMBER_WORDS.test(text)) {
-    return `${label} must contain a measurable result, e.g. the number of items/tasks completed ("5 reports", "12 test cases")`;
+    
+    const words = wordCount(text);
+    if (p.maxWords && p.maxWords > 0 && words > p.maxWords) {
+      return `${label} must be at most ${p.maxWords} words (currently ${words})`;
+    }
+    if (p.minWords && words < p.minWords) {
+      return `${label} must be a meaningful explanation (at least ${p.minWords} words)`;
+    }
+    if (p.needsNumber && !/\d/.test(text) && !NUMBER_WORDS.test(text)) {
+      return `${label} must contain a measurable result, e.g. the number of items/tasks completed ("5 reports", "12 test cases")`;
+    }
   }
   return null;
 }

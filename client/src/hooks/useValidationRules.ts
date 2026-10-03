@@ -15,7 +15,10 @@ export const VALIDATION_RULES_QUERY_KEY = '/api/timesheet-validation-rules';
 export function useValidationRules() {
   const query = useQuery<ValidationRulesRecord>({
     queryKey: [VALIDATION_RULES_QUERY_KEY],
-    staleTime: 30_000,
+    // Always fetch fresh data on mount so toggled states persist correctly after
+    // logout / login / page reload without waiting for the stale window.
+    staleTime: 0,
+    refetchOnMount: true,
     refetchOnWindowFocus: true,
   });
   const rules = useMemo(

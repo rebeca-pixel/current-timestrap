@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, queryClient } from '@/lib/queryClient';
 
 export type UserRole = 'employee' | 'manager' | 'hr' | 'admin';
 
@@ -74,6 +74,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('timestrap_user');
+    // Clear React Query cache so stale data from this session doesn't bleed into the next login
+    queryClient.clear();
   };
 
   return (

@@ -80,9 +80,7 @@ export default function PlanForDayPage() {
 
     const dayStart = Math.min(...startTimes);
 
-    // The work day should begin in the morning. A first task starting in the
-    // afternoon/evening is almost always an AM/PM mix-up (e.g. picking 5:00 PM
-    // instead of 10:00 AM as the day's start time).
+    // The work day should begin in the morning.
     if (dayStart >= WORK_DAY_NOON_MIN) {
       errors.push(`Your day is set to start at ${toDisplayTime(dayStart)}. Work usually starts in the morning — please check for an AM/PM mistake on your start time.`);
     }
@@ -99,12 +97,22 @@ export default function PlanForDayPage() {
       if (startMin < WORK_DAY_START_MIN || startMin > WORK_DAY_END_MIN) {
         errors.push(`"${label}" starts at ${toDisplayTime(startMin)}, which is outside normal working hours (6:00 AM – 11:00 PM). Please double check AM/PM.`);
       }
-      // Catch a task that starts well before the day's established start time —
-      // a classic sign of an AM/PM flip on that one field.
       if (startMin < dayStart - 60) {
         errors.push(`"${label}" starts at ${toDisplayTime(startMin)}, which is before your day begins at ${toDisplayTime(dayStart)}. Please check for an AM/PM mistake.`);
       }
     });
+
+    // Check for overlapping time slots
+    const sorted = [...tasks].sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime));
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const curr = sorted[i];
+      const next = sorted[i + 1];
+      const currEnd = toMinutes(curr.endTime);
+      const nextStart = toMinutes(next.startTime);
+      if (currEnd > nextStart) {
+        errors.push(`"${curr.task_name}" (ends ${toDisplayTime(currEnd)}) overlaps with "${next.task_name}" (starts ${toDisplayTime(nextStart)}). Please fix the timings.`);
+      }
+    }
 
     return errors;
   };
@@ -123,12 +131,15 @@ export default function PlanForDayPage() {
     return Math.max(minDuration, Math.min(maxDuration, calculatedDuration));
   };
 
+  // Default anchor = 15 minutes before current time (clamped to work hours)
   const getPlanningAnchorMinutes = () => {
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    // Start 15 minutes before now so newly added tasks have a sensible default
+    const anchoredMinutes = currentMinutes - 15;
     const earliestAllowed = 6 * 60;
     const latestAllowed = 23 * 60;
-    return Math.min(Math.max(currentMinutes, earliestAllowed), latestAllowed);
+    return Math.min(Math.max(anchoredMinutes, earliestAllowed), latestAllowed);
   };
 
   const getDefaultPlanDuration = () => 30;
@@ -137,11 +148,8 @@ export default function PlanForDayPage() {
     const anchorMinutes = getPlanningAnchorMinutes();
     const endOfDay = 23 * 60;
 
+    // Sort: breaks go to their configured slots (by their explicit time), regular tasks follow
     const orderedTasks = [...tasks].sort((a, b) => {
-      const aIsBreak = !!a.isBreak || a.id?.startsWith('break-');
-      const bIsBreak = !!b.isBreak || b.id?.startsWith('break-');
-      if (aIsBreak !== bIsBreak) return aIsBreak ? 1 : -1;
-
       const aStart = toMinutes(a.scheduleData?.startTime || a.startTime || '23:59');
       const bStart = toMinutes(b.scheduleData?.startTime || b.startTime || '23:59');
       return aStart - bStart;
@@ -152,17 +160,35 @@ export default function PlanForDayPage() {
     return orderedTasks.map((task, index) => {
       const scheduleData = typeof task.scheduleData === 'object' && task.scheduleData ? task.scheduleData : {};
       const baseDuration = scheduleData.durationMinutes ?? task.durationMinutes ?? getDefaultPlanDuration();
+      const isBreak = !!task.isBreak || !!task.id?.startsWith?.('break-');
+
+      // ALWAYS preserve explicit start times:
+      // - Breaks always keep their configured startTime
+      // - Any task where the user has set a startTime (stored in scheduleData or task.startTime) keeps it
       const explicitStart = scheduleData.startTime || task.startTime;
       const explicitStartMinutes = explicitStart ? toMinutes(explicitStart) : null;
-      const shouldKeepExplicitStart = explicitStartMinutes !== null && explicitStartMinutes >= anchorMinutes - 30 && explicitStartMinutes <= endOfDay;
-      const startTime = shouldKeepExplicitStart ? explicitStart : toTime(cursor);
+
+      // Keep explicit start if: it's a break (always), or it's within valid range
+      const shouldKeepExplicitStart =
+        explicitStartMinutes !== null &&
+        explicitStartMinutes >= WORK_DAY_START_MIN &&
+        explicitStartMinutes <= endOfDay &&
+        (isBreak || task._userEditedTime || explicitStartMinutes >= anchorMinutes - 120);
+
+      const startTime = shouldKeepExplicitStart ? explicitStart : toTime(Math.max(cursor, anchorMinutes));
       const startMin = toMinutes(startTime);
 
-      let endTime = scheduleData.endTime || task.endTime || toTime(startMin + baseDuration);
+      // Use explicit end time if user set it; otherwise derive from duration
+      const explicitEnd = scheduleData.endTime || task.endTime;
+      let endTime = explicitEnd || toTime(startMin + baseDuration);
       const durationMinutes = durationForRange(startTime, endTime, task.id);
       const finalEndMinutes = startMin + durationMinutes;
       endTime = toTime(finalEndMinutes);
-      cursor = Math.max(finalEndMinutes, toMinutes(endTime));
+
+      // Advance cursor only for non-break tasks (breaks don't push other tasks)
+      if (!isBreak) {
+        cursor = Math.max(cursor, finalEndMinutes);
+      }
 
       if (cursor > endOfDay) {
         cursor = endOfDay;
@@ -211,7 +237,9 @@ export default function PlanForDayPage() {
   };
 
   const updateTaskSchedule = (instanceId: string, field: 'startTime' | 'endTime' | 'extensionReason', value: string) => {
-    setSelectedTasks(prev => buildScheduledTasks(prev.map(task => {
+    // Directly update the task's time without triggering buildScheduledTasks re-ordering,
+    // so user-entered times are always preserved exactly as typed.
+    setSelectedTasks(prev => prev.map(task => {
       if (task.instanceId !== instanceId) return task;
       const nextSchedule = { ...(task.scheduleData || {}), [field]: value };
       const maxDuration = getMaxDuration(task.id);
@@ -249,11 +277,13 @@ export default function PlanForDayPage() {
 
       return {
         ...task,
+        // Flag as user-edited so buildScheduledTasks never overrides these times
+        _userEditedTime: true,
         scheduleData: nextSchedule,
         ...(field === 'startTime' ? { startTime: value } : {}),
         ...(field === 'endTime' ? { endTime: nextSchedule.endTime } : {}),
       };
-    })));
+    }));
   };
 
   const updateTaskSubtask = (instanceId: string, subtaskIds: string[], subtaskNames: string[]) => {
@@ -487,7 +517,9 @@ export default function PlanForDayPage() {
 
     if (!planStatus?.submitted && selectedTasks.length === 0) {
       const autoTasks = availableTasks.filter((task: any) => task.isAutoSelected);
-      const nowMinutes = getPlanningAnchorMinutes();
+      // Use current time (not anchor - 15) to filter which breaks have already passed
+      const now = new Date();
+      const realNowMinutes = now.getHours() * 60 + now.getMinutes();
       const breaks = [
         {
           id: 'break-morning',
@@ -517,8 +549,9 @@ export default function PlanForDayPage() {
           endTime: '17:15'
         }
       ].filter((breakItem) => {
-        const start = toMinutes(breakItem.startTime);
-        return start >= nowMinutes - 30;
+        // Only include breaks that haven't fully passed yet
+        const end = toMinutes(breakItem.endTime);
+        return end > realNowMinutes;
       });
       if (autoTasks.length > 0 || breaks.length > 0) {
         setSelectedTasks(buildScheduledTasks([...autoTasks, ...breaks]));
@@ -745,16 +778,18 @@ export default function PlanForDayPage() {
       return;
     }
 
-    const normalized = buildScheduledTasks(selectedTasks);
-    setSelectedTasks(normalized);
-
-    const validationErrors = getTimingErrors(normalized);
+    // Validate timing errors on the CURRENT tasks (without re-ordering which would override user times)
+    const validationErrors = getTimingErrors(selectedTasks);
     if (validationErrors.length > 0) {
-      toast({ title: 'Invalid Timings', description: validationErrors[0], variant: 'destructive' });
+      toast({
+        title: 'Fix Timing Errors',
+        description: validationErrors[0],
+        variant: 'destructive',
+      });
       return;
     }
 
-    const unselected = availableTasks.filter((task: any) => !normalized.find((selected: any) => selected.id === task.id));
+    const unselected = availableTasks.filter((task: any) => !selectedTasks.find((selected: any) => selected.id === task.id));
     if (unselected.length > 0) {
       setShowUnselectedForm(true);
       setCommonReason('');
@@ -775,16 +810,14 @@ export default function PlanForDayPage() {
       return;
     }
 
-    const normalized = buildScheduledTasks(selectedTasks);
-    setSelectedTasks(normalized);
-
-    const validationErrors = getTimingErrors(normalized);
+    // Validate timing using the tasks exactly as entered by the user (don't rebuild)
+    const validationErrors = getTimingErrors(selectedTasks);
     if (validationErrors.length > 0) {
       toast({ title: 'Invalid Timings', description: validationErrors[0], variant: 'destructive' });
       return;
     }
 
-    const unselected = availableTasks.filter((task: any) => !normalized.find((selected: any) => selected.id === task.id))
+    const unselected = availableTasks.filter((task: any) => !selectedTasks.find((selected: any) => selected.id === task.id))
       .map((task: any) => ({
         taskId: task.id,
         taskName: task.task_name,

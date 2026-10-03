@@ -508,47 +508,64 @@ export default function TrackerPage({ user }: TrackerPageProps) {
     }
   };
 
-  // Combine pending tasks with submitted entries for display
-  const allTasks: Task[] = useMemo(() => [
-    // Convert server entries to Task format
-    ...todaysEntries.map(entry => {
-      const parsed = parseTaskDescription(entry.taskDescription);
-      const parsedMinutes = parseDuration(entry.totalHours);
-      return {
-        id: entry.id,
-        project: entry.projectName,
-        title: parsed.title,
-        subTask: parsed.subTask,
-        description: parsed.description,
-        problemAndIssues: entry.problemAndIssues || '',
-        quantify: entry.quantify || '',
-        achievements: entry.achievements || '',
-        scopeOfImprovements: entry.scopeOfImprovements || '',
-        toolsUsed: entry.toolsUsed || [],
-        startTime: entry.startTime,
-        endTime: entry.endTime,
-        durationMinutes: parsedMinutes > 0 ? parsedMinutes : deriveMinutesFromTimes(entry.startTime, entry.endTime),
-        percentageComplete: entry.percentageComplete ?? 0,
-        pmsId: entry.pmsId || undefined,
-        pmsSubtaskId: entry.pmsSubtaskId || undefined,
-        keyStep: (entry as any).keyStep || undefined,
-        isComplete: entry.status === 'approved',
-        serverStatus: entry.status as Task['serverStatus'],
-        date: entry.date,
-        rejectionReason: entry.rejectionReason || undefined,
-      };
-    }),
-    // Add pending local tasks — backfill durationMinutes from start/end time
-    // whenever it wasn't set (or is 0) at creation time, so the Duration
-    // column shows the real value instead of "0m".
-    ...pendingTasks.map(t => ({
-      ...t,
-      serverStatus: 'draft' as const,
-      durationMinutes: (t.durationMinutes && t.durationMinutes > 0)
-        ? t.durationMinutes
-        : deriveMinutesFromTimes(t.startTime, t.endTime),
-    })),
-  ], [todaysEntries, pendingTasks]);
+  const getMinutesFromMidnight = (timeStr?: string): number => {
+    if (!timeStr) return 99999;
+    const [h, m] = timeStr.split(':').map(Number);
+    if (isNaN(h) || isNaN(m)) return 99999;
+    return h * 60 + m;
+  };
+
+  // Combine pending tasks with submitted entries for display, sorted in planned time/order sequence
+  const allTasks: Task[] = useMemo(() => {
+    const raw: Task[] = [
+      // Convert server entries to Task format
+      ...todaysEntries.map(entry => {
+        const parsed = parseTaskDescription(entry.taskDescription);
+        const parsedMinutes = parseDuration(entry.totalHours);
+        return {
+          id: entry.id,
+          project: entry.projectName,
+          title: parsed.title,
+          subTask: parsed.subTask,
+          description: parsed.description,
+          problemAndIssues: entry.problemAndIssues || '',
+          quantify: entry.quantify || '',
+          achievements: entry.achievements || '',
+          scopeOfImprovements: entry.scopeOfImprovements || '',
+          toolsUsed: entry.toolsUsed || [],
+          startTime: entry.startTime,
+          endTime: entry.endTime,
+          durationMinutes: parsedMinutes > 0 ? parsedMinutes : deriveMinutesFromTimes(entry.startTime, entry.endTime),
+          percentageComplete: entry.percentageComplete ?? 0,
+          pmsId: entry.pmsId || undefined,
+          pmsSubtaskId: entry.pmsSubtaskId || undefined,
+          keyStep: (entry as any).keyStep || undefined,
+          isComplete: entry.status === 'approved',
+          serverStatus: entry.status as Task['serverStatus'],
+          date: entry.date,
+          rejectionReason: entry.rejectionReason || undefined,
+        };
+      }),
+      // Add pending local tasks — backfill durationMinutes from start/end time
+      // whenever it wasn't set (or is 0) at creation time
+      ...pendingTasks.map(t => ({
+        ...t,
+        serverStatus: 'draft' as const,
+        durationMinutes: (t.durationMinutes && t.durationMinutes > 0)
+          ? t.durationMinutes
+          : deriveMinutesFromTimes(t.startTime, t.endTime),
+      })),
+    ];
+
+    return raw.sort((a, b) => {
+      const startA = getMinutesFromMidnight(a.startTime);
+      const startB = getMinutesFromMidnight(b.startTime);
+      if (startA !== startB) return startA - startB;
+      const endA = getMinutesFromMidnight(a.endTime);
+      const endB = getMinutesFromMidnight(b.endTime);
+      return endA - endB;
+    });
+  }, [todaysEntries, pendingTasks]);
 
   // Apply filters to tasks
   const filteredAllTasks = useMemo(() => {
@@ -690,6 +707,11 @@ export default function TrackerPage({ user }: TrackerPageProps) {
   const REQUIRED_MINUTES = 8 * 60;
   const hasEnoughHours = totalCombinedMinutes >= REQUIRED_MINUTES;
 
+  // Check if any rejected tasks need rectification
+  const hasRejectedTasks = useMemo(() => {
+    return todaysTasksOnly.some(t => t.serverStatus === 'rejected');
+  }, [todaysTasksOnly]);
+
   // Check if any draft tasks are missing required fields
   const hasInvalidDraftTasks = useMemo(() => {
     const draftTasks = todaysTasksOnly.filter(t => t.serverStatus === 'draft');
@@ -707,7 +729,8 @@ export default function TrackerPage({ user }: TrackerPageProps) {
     !isOnLeaveToday &&
     todaysTasksOnly.length > 0 &&
     (hasEnoughHours || settings.forceAllowFinalSubmit) &&
-    !hasInvalidDraftTasks;
+    !hasInvalidDraftTasks &&
+    !hasRejectedTasks;
 
   // Human-readable reason the Final Submit button is disabled, so the actual
   // blocker is visible instead of a silently greyed-out button.
@@ -718,6 +741,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       : 'You are on leave today, so the timesheet for this date is blocked.';
     if (needsPlan) return "You haven't submitted today's Plan for the Day yet.";
     if (todaysTasksOnly.length === 0) return 'No tasks logged yet for this date.';
+    if (hasRejectedTasks) return 'You have rejected task(s) that must be rectified before submitting.';
     if (hasInvalidDraftTasks) {
       const draftTasks = todaysTasksOnly.filter(t => t.serverStatus === 'draft');
       const missing = new Set<string>();
@@ -731,10 +755,10 @@ export default function TrackerPage({ user }: TrackerPageProps) {
     }
     if (!hasEnoughHours && !settings.forceAllowFinalSubmit) {
       const remaining = REQUIRED_MINUTES - totalCombinedMinutes;
-      return `You need ${formatDuration(remaining)} more logged before you can submit (8-hour rule).`;
+      return `Minimum 8 hours required to Final Submit. You need ${formatDuration(remaining)} more logged (${formatDuration(totalCombinedMinutes)} / 8h 00m logged).`;
     }
     return null;
-  }, [isSubmitting, isOnLeaveToday, leaveStatusData?.status, needsPlan, todaysTasksOnly, hasInvalidDraftTasks, hasEnoughHours, settings.forceAllowFinalSubmit, totalCombinedMinutes]);
+  }, [isSubmitting, isOnLeaveToday, leaveStatusData?.status, needsPlan, todaysTasksOnly, hasRejectedTasks, hasInvalidDraftTasks, hasEnoughHours, settings.forceAllowFinalSubmit, totalCombinedMinutes]);
 
 
   const handleSaveTask = async (taskData: Task) => {
@@ -863,6 +887,17 @@ export default function TrackerPage({ user }: TrackerPageProps) {
 
   const handleFinalSubmit = async () => {
     if (isSubmitting) return;
+
+    if (!canSubmit) {
+      if (submitBlockReason) {
+        toast({
+          title: 'Cannot Submit Timesheet',
+          description: submitBlockReason,
+          variant: 'destructive',
+        });
+      }
+      return;
+    }
 
     if (needsPlan) {
       toast({
@@ -1393,7 +1428,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
             </div>
             <Button
               onClick={handleFinalSubmit}
-              disabled={submitMutation.isPending}
+              disabled={submitMutation.isPending || !canSubmit}
               className={`bg-yellow-600 hover:bg-yellow-500 ${!canSubmit ? 'opacity-50 cursor-not-allowed' : ''} tracker-submit-all-btn`}
             >
               {submitMutation.isPending ? (

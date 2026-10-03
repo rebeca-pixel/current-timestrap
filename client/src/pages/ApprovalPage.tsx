@@ -1574,13 +1574,13 @@ const describeApprovalConditions = (r: ValidationRules): string[] => {
   const out: string[] = [];
   const text = (label: string) => `${label} must be filled with at least ${TIMESHEET_MIN_CHARS} characters of real content (no "n/a", "none" or repeated characters)`;
   if (r.quantify.approve) {
-    out.push(`${text('Quantify Your Result')}, at most ${r.quantify.maxWords} words${r.quantify.requireNumber ? ', and it must contain a measurable number' : ''}`);
+    out.push(`${text('Quantify Your Result')}, at least ${r.quantify.minWords} words${r.quantify.requireNumber ? ', and it must contain a measurable number' : ''}`);
   }
   if (r.achievements.approve) {
-    out.push(`${text('Achievements')}, at most ${r.achievements.maxWords} words${r.achievements.allowProblemsInstead ? ' (if empty, a valid Problems & Issues entry is accepted instead)' : ''}`);
+    out.push(`${text('Achievements')}, at least ${r.achievements.minWords} words${r.achievements.allowProblemsInstead ? ' (if empty, a valid Problems & Issues entry is accepted instead)' : ''}`);
   }
   if (r.problemAndIssues.approve) out.push(text('Problems & Issues'));
-  if (r.description.approve) out.push(`${text('Description')}, at most ${r.description.maxWords} words`);
+  if (r.description.approve) out.push(`${text('Description')}, at least ${r.description.minWords} words`);
   if (r.toolsUsed.approve) out.push('Tools Used must have at least one tool selected');
   if (r.percentageComplete.approve) out.push(`Completion % must be between ${r.percentageComplete.minValue} and 100`);
   if (r.keyStep.approve) out.push('Key Step must be filled');
@@ -2048,19 +2048,19 @@ function AdminApprovalPanel({ user }: { user: User }) {
                 </div>
                 <RuleRow label="Quantify Your Result" submit={rules.quantify.submit} approve={rules.quantify.approve}
                   onSubmit={(v) => setRule('quantify', { submit: v })} onApprove={(v) => setRule('quantify', { approve: v })}>
-                  <NumField label="Max words" max={200} value={rules.quantify.maxWords} onChange={(v) => setRule('quantify', { maxWords: v })} />
+                  <NumField label="Min words" max={10000} value={rules.quantify.minWords} onChange={(v) => setRule('quantify', { minWords: v })} />
                   <ToggleField label='Must contain a number (e.g. "5 reports")' checked={rules.quantify.requireNumber} onChange={(v) => setRule('quantify', { requireNumber: v })} />
                 </RuleRow>
                 <RuleRow label="Achievements" submit={rules.achievements.submit} approve={rules.achievements.approve}
                   onSubmit={(v) => setRule('achievements', { submit: v })} onApprove={(v) => setRule('achievements', { approve: v })}>
-                  <NumField label="Max words" max={200} value={rules.achievements.maxWords} onChange={(v) => setRule('achievements', { maxWords: v })} />
+                  <NumField label="Min words" max={10000} value={rules.achievements.minWords} onChange={(v) => setRule('achievements', { minWords: v })} />
                   <ToggleField label="If empty, a valid Problems & Issues can replace it" checked={rules.achievements.allowProblemsInstead} onChange={(v) => setRule('achievements', { allowProblemsInstead: v })} />
                 </RuleRow>
                 <RuleRow label="Problems & Issues" hint="Mandatory on its own" submit={rules.problemAndIssues.submit} approve={rules.problemAndIssues.approve}
                   onSubmit={(v) => setRule('problemAndIssues', { submit: v })} onApprove={(v) => setRule('problemAndIssues', { approve: v })} />
                 <RuleRow label="Description" submit={rules.description.submit} approve={rules.description.approve}
                   onSubmit={(v) => setRule('description', { submit: v })} onApprove={(v) => setRule('description', { approve: v })}>
-                  <NumField label="Max words" max={200} value={rules.description.maxWords} onChange={(v) => setRule('description', { maxWords: v })} />
+                  <NumField label="Min words" max={10000} value={rules.description.minWords} onChange={(v) => setRule('description', { minWords: v })} />
                 </RuleRow>
                 <RuleRow label="Tools Used" hint="Just needs to be filled" submit={rules.toolsUsed.submit} approve={rules.toolsUsed.approve}
                   onSubmit={(v) => setRule('toolsUsed', { submit: v })} onApprove={(v) => setRule('toolsUsed', { approve: v })} />

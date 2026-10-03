@@ -1266,7 +1266,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                   <Label htmlFor="quantify" className="text-blue-100 tracker-form-label">Quantify Your Result *</Label>
                   <Input
                     id="quantify"
-                    placeholder="Enter quantify (e.g., 5 reports, 10 calls) - max 10 words"
+                    placeholder="Enter quantify (e.g., 5 reports, 10 calls) - min 10 words"
                     value={formData.quantify}
                     onChange={(e) => setFormData({ ...formData, quantify: e.target.value })}
                     onFocus={(e) => { try { playSound('confirm'); if (Math.random() < 0.5) { speak('Tell me the numbers — how many?'); const el = (e.target || e.currentTarget) as HTMLElement | null; if (el) { const r = el.getBoundingClientRect(); window.dispatchEvent(new CustomEvent('mascot:showNear', { detail: { text: 'Tell me the numbers — how many?', rect: { left: r.left, top: r.top, width: r.width, height: r.height } } })); } } } catch { } }}
@@ -1295,7 +1295,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                   <Label htmlFor="achievements" className="text-blue-100 tracker-form-label">Achievements</Label>
                   <Input
                     id="achievements"
-                    placeholder="What did you accomplish? (max 10 words; or fill Problems & Issues)"
+                    placeholder="What did you accomplish? (min 10 words; or fill Problems & Issues)"
                     value={formData.achievements}
                     onChange={(e) => setFormData({ ...formData, achievements: e.target.value })}
                     onFocus={(e) => {
@@ -1357,7 +1357,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="description" className="text-blue-100 tracker-form-label">
-                    Description <span className="text-blue-400/60 text-xs">(optional, max 10 words)</span>
+                    Description <span className="text-blue-400/60 text-xs">(optional, min 10 words)</span>
                   </Label>
                   {timeguardSuggestionsEnabled && (
                     <button
@@ -1374,24 +1374,17 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                 </div>
                 <Textarea
                   id="description"
-                  placeholder="Describe the task (optional, max 10 words)..."
+                  placeholder="Describe the task (optional, min 10 words)..."
                   value={formData.description}
                   onChange={(e) => {
-                    const words = e.target.value.trim().split(/\s+/).filter(w => w.length > 0);
-                    if (words.length <= 10) {
-                      setFormData({ ...formData, description: e.target.value });
-                      if (words.length === 10) {
-                        playSound('wow');
-                        // window.dispatchEvent(new CustomEvent('mascot:doll', { detail: { text: "Love the detail!", x: 80, y: 70 } }));
-                      }
-                    }
+                    setFormData({ ...formData, description: e.target.value });
                   }}
                   className="tracker-form-input resize-none"
                   rows={3}
                   data-testid="input-description"
                 />
                 <p className="text-xs text-blue-400/60">
-                  {formData.description.trim().split(/\s+/).filter(w => w.length > 0).length}/10 words
+                  {formData.description.trim().split(/\s+/).filter(w => w.length > 0).length}/10 words (minimum)
                 </p>
               </div>
 

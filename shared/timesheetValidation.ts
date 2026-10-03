@@ -18,13 +18,13 @@ export interface StageToggle {
 }
 
 export interface ValidationRules {
-  quantify: StageToggle & { maxWords: number; requireNumber: boolean };
+  quantify: StageToggle & { minWords: number; requireNumber: boolean };
   achievements: StageToggle & {
-    maxWords: number;
+    minWords: number;
     allowProblemsInstead: boolean; // when Achievements is empty, a valid Problems & Issues satisfies it
   };
   problemAndIssues: StageToggle;
-  description: StageToggle & { maxWords: number };
+  description: StageToggle & { minWords: number };
   toolsUsed: StageToggle;
   percentageComplete: StageToggle & { minValue: number };
   keyStep: StageToggle;
@@ -36,10 +36,10 @@ export const TIMESHEET_MIN_CHARS = 10;
 
 // Only the starting point for a fresh install. Once an admin saves rules, the saved rules win.
 export const DEFAULT_VALIDATION_RULES: ValidationRules = {
-  quantify: { submit: true, approve: true, maxWords: 10, requireNumber: true },
-  achievements: { submit: true, approve: true, maxWords: 10, allowProblemsInstead: true },
+  quantify: { submit: true, approve: true, minWords: 10, requireNumber: true },
+  achievements: { submit: true, approve: true, minWords: 10, allowProblemsInstead: true },
   problemAndIssues: { submit: false, approve: false },
-  description: { submit: false, approve: false, maxWords: 10 },
+  description: { submit: false, approve: false, minWords: 10 },
   toolsUsed: { submit: true, approve: true },
   percentageComplete: { submit: true, approve: true, minValue: 1 },
   keyStep: { submit: false, approve: true },
@@ -86,10 +86,10 @@ function isGibberish(text: string): boolean {
   return new Set(text.toLowerCase().replace(/\s/g, "").split("")).size < 4;
 }
 
-interface TextParams { mandatory: boolean; maxWords?: number; minWords?: number; needsNumber?: boolean }
+interface TextParams { mandatory: boolean; minWords?: number; needsNumber?: boolean }
 
 // Checks a text value. Mandatory => empty/placeholder is an error and the 10-character minimum applies.
-// Optional => empty/placeholder is fine; a filled value must still respect the word limit.
+// Optional => empty/placeholder is fine; a filled value must still meet the minimum word count.
 function checkText(label: string, value: unknown, p: TextParams): string | null {
   const text = cleanText(value);
   if (!text || PLACEHOLDERS.has(text.toLowerCase())) {
@@ -103,11 +103,8 @@ function checkText(label: string, value: unknown, p: TextParams): string | null 
     if (isGibberish(text)) return `${label} must be meaningful, not repeated characters`;
     
     const words = wordCount(text);
-    if (p.maxWords && p.maxWords > 0 && words > p.maxWords) {
-      return `${label} must be at most ${p.maxWords} words (currently ${words})`;
-    }
-    if (p.minWords && words < p.minWords) {
-      return `${label} must be a meaningful explanation (at least ${p.minWords} words)`;
+    if (p.minWords && p.minWords > 0 && words < p.minWords) {
+      return `${label} must be at least ${p.minWords} words (currently ${words})`;
     }
     if (p.needsNumber && !/\d/.test(text) && !NUMBER_WORDS.test(text)) {
       return `${label} must contain a measurable result, e.g. the number of items/tasks completed ("5 reports", "12 test cases")`;
@@ -137,14 +134,14 @@ export function validateWithRules(entry: any, rules: ValidationRules, stage: Val
   // Quantify Your Result
   push(checkText(L.quantify, e.quantify, {
     mandatory: rules.quantify[stage],
-    maxWords: rules.quantify.maxWords,
+    minWords: rules.quantify.minWords,
     needsNumber: rules.quantify.requireNumber,
   }));
 
   // Achievements, or Problems & Issues when there is no achievement
   const ach = rules.achievements;
   if (!isBlank(e.achievements)) {
-    push(checkText(L.achievements, e.achievements, { mandatory: ach[stage], maxWords: ach.maxWords, minWords: 2 }));
+    push(checkText(L.achievements, e.achievements, { mandatory: ach[stage], minWords: ach.minWords }));
   } else if (ach[stage]) {
     if (!ach.allowProblemsInstead) {
       problems.push(`${L.achievements} is required`);
@@ -166,7 +163,7 @@ export function validateWithRules(entry: any, rules: ValidationRules, stage: Val
   // Description
   push(checkText(L.description, extractDescription(e), {
     mandatory: rules.description[stage],
-    maxWords: rules.description.maxWords,
+    minWords: rules.description.minWords,
   }));
 
   // Tools Used (picked from a list, so "mandatory" = at least one tool)
@@ -217,18 +214,18 @@ export function normalizeValidationRules(input: any): ValidationRules {
   return {
     quantify: {
       ...toggle("quantify"),
-      maxWords: num(g("quantify").maxWords, d.quantify.maxWords, 200),
+      minWords: num(g("quantify").minWords ?? g("quantify").maxWords, d.quantify.minWords, 10000),
       requireNumber: bool(g("quantify").requireNumber, d.quantify.requireNumber),
     },
     achievements: {
       ...toggle("achievements"),
-      maxWords: num(g("achievements").maxWords, d.achievements.maxWords, 200),
+      minWords: num(g("achievements").minWords ?? g("achievements").maxWords, d.achievements.minWords, 10000),
       allowProblemsInstead: bool(g("achievements").allowProblemsInstead, d.achievements.allowProblemsInstead),
     },
     problemAndIssues: toggle("problemAndIssues"),
     description: {
       ...toggle("description"),
-      maxWords: num(g("description").maxWords, d.description.maxWords, 200),
+      minWords: num(g("description").minWords ?? g("description").maxWords, d.description.minWords, 10000),
     },
     toolsUsed: toggle("toolsUsed"),
     percentageComplete: {

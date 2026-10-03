@@ -18,7 +18,7 @@ export interface StageToggle {
 }
 
 export interface ValidationRules {
-  quantify: StageToggle & { minWords: number; requireNumber: boolean };
+  quantify: StageToggle & { requireNumber: boolean };
   achievements: StageToggle & {
     minWords: number;
     allowProblemsInstead: boolean; // when Achievements is empty, a valid Problems & Issues satisfies it
@@ -36,7 +36,7 @@ export const TIMESHEET_MIN_CHARS = 10;
 
 // Only the starting point for a fresh install. Once an admin saves rules, the saved rules win.
 export const DEFAULT_VALIDATION_RULES: ValidationRules = {
-  quantify: { submit: true, approve: true, minWords: 10, requireNumber: true },
+  quantify: { submit: true, approve: true, requireNumber: true },
   achievements: { submit: true, approve: true, minWords: 10, allowProblemsInstead: true },
   problemAndIssues: { submit: false, approve: false },
   description: { submit: false, approve: false, minWords: 10 },
@@ -131,10 +131,9 @@ export function validateWithRules(entry: any, rules: ValidationRules, stage: Val
   const problems: string[] = [];
   const push = (msg: string | null) => { if (msg) problems.push(msg); };
 
-  // Quantify Your Result
+  // Quantify Your Result — only presence + number check, no word-count minimum
   push(checkText(L.quantify, e.quantify, {
     mandatory: rules.quantify[stage],
-    minWords: rules.quantify.minWords,
     needsNumber: rules.quantify.requireNumber,
   }));
 
@@ -214,7 +213,6 @@ export function normalizeValidationRules(input: any): ValidationRules {
   return {
     quantify: {
       ...toggle("quantify"),
-      minWords: num(g("quantify").minWords ?? g("quantify").maxWords, d.quantify.minWords, 10000),
       requireNumber: bool(g("quantify").requireNumber, d.quantify.requireNumber),
     },
     achievements: {

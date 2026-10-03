@@ -314,6 +314,7 @@ async function ensureTimeEntryIndexes() {
 }
 
 // ---------- Timesheet validation rules (configured by the Admin, stored in the database) ----------
+// Cache is intentionally null on startup — forces re-normalization with the current code on first request.
 let cachedValidationRules: { rules: ValidationRules; updatedAt: string | null; updatedBy: string | null } | null = null;
 
 async function ensureValidationRulesTable() {

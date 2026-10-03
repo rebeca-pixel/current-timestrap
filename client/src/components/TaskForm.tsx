@@ -1266,7 +1266,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                   <Label htmlFor="quantify" className="text-blue-100 tracker-form-label">Quantify Your Result *</Label>
                   <Input
                     id="quantify"
-                    placeholder="Enter quantify (e.g., 5 reports, 10 calls) - min 10 words"
+                    placeholder="Enter quantify (e.g., 5 reports, 10 calls)"
                     value={formData.quantify}
                     onChange={(e) => setFormData({ ...formData, quantify: e.target.value })}
                     onFocus={(e) => { try { playSound('confirm'); if (Math.random() < 0.5) { speak('Tell me the numbers — how many?'); const el = (e.target || e.currentTarget) as HTMLElement | null; if (el) { const r = el.getBoundingClientRect(); window.dispatchEvent(new CustomEvent('mascot:showNear', { detail: { text: 'Tell me the numbers — how many?', rect: { left: r.left, top: r.top, width: r.width, height: r.height } } })); } } } catch { } }}

@@ -1574,7 +1574,7 @@ const describeApprovalConditions = (r: ValidationRules): string[] => {
   const out: string[] = [];
   const text = (label: string) => `${label} must be filled with at least ${TIMESHEET_MIN_CHARS} characters of real content (no "n/a", "none" or repeated characters)`;
   if (r.quantify.approve) {
-    out.push(`${text('Quantify Your Result')}, at least ${r.quantify.minWords} words${r.quantify.requireNumber ? ', and it must contain a measurable number' : ''}`);
+    out.push(`${text('Quantify Your Result')}${r.quantify.requireNumber ? ', and it must contain a measurable number' : ''}`);
   }
   if (r.achievements.approve) {
     out.push(`${text('Achievements')}, at least ${r.achievements.minWords} words${r.achievements.allowProblemsInstead ? ' (if empty, a valid Problems & Issues entry is accepted instead)' : ''}`);
@@ -2048,7 +2048,6 @@ function AdminApprovalPanel({ user }: { user: User }) {
                 </div>
                 <RuleRow label="Quantify Your Result" submit={rules.quantify.submit} approve={rules.quantify.approve}
                   onSubmit={(v) => setRule('quantify', { submit: v })} onApprove={(v) => setRule('quantify', { approve: v })}>
-                  <NumField label="Min words" max={10000} value={rules.quantify.minWords} onChange={(v) => setRule('quantify', { minWords: v })} />
                   <ToggleField label='Must contain a number (e.g. "5 reports")' checked={rules.quantify.requireNumber} onChange={(v) => setRule('quantify', { requireNumber: v })} />
                 </RuleRow>
                 <RuleRow label="Achievements" submit={rules.achievements.submit} approve={rules.achievements.approve}

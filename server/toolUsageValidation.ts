@@ -269,7 +269,7 @@ export async function getActivityLogEntries(
   }
 
   const employeeResult = await timeguardPool.query(
-    `SELECT id FROM employees WHERE employee_code = $1 LIMIT 1`,
+    `SELECT id FROM employees WHERE UPPER(TRIM(employee_code)) = UPPER(TRIM($1)) LIMIT 1`,
     [employeeCode]
   );
   const employeeId = employeeResult.rows[0]?.id;
@@ -413,7 +413,7 @@ export async function getActualWorkedTools(
   }
 
   const employeeResult = await timeguardPool.query(
-    `SELECT id FROM employees WHERE employee_code = $1 LIMIT 1`,
+    `SELECT id FROM employees WHERE UPPER(TRIM(employee_code)) = UPPER(TRIM($1)) LIMIT 1`,
     [employeeCode]
   );
   const employeeId = employeeResult.rows[0]?.id;

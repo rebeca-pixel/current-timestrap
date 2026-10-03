@@ -707,15 +707,12 @@ export default function TrackerPage({ user }: TrackerPageProps) {
   const REQUIRED_MINUTES = 8 * 60;
   const hasEnoughHours = totalCombinedMinutes >= REQUIRED_MINUTES;
 
-  // Check if any rejected tasks need rectification (across all dates/entries)
-  const hasRejectedTasks = useMemo(() => {
-    return serverEntries.some(e => e.status === 'rejected') || allTasks.some(t => t.serverStatus === 'rejected');
-  }, [serverEntries, allTasks]);
 
-  // Check details of ALL tasks logged for today to ensure required fields & rules are fulfilled
+  // Check details of ALL active tasks logged for today to ensure required fields & rules are fulfilled
   const invalidTasksDetails = useMemo(() => {
-    if (todaysTasksOnly.length === 0) return [];
-    return todaysTasksOnly.map(t => {
+    const activeTasks = todaysTasksOnly.filter(t => t.serverStatus !== 'rejected');
+    if (activeTasks.length === 0) return [];
+    return activeTasks.map(t => {
       const missing: string[] = [];
       if (!t.project) missing.push('Project');
       if (!t.title) missing.push('Title');
@@ -734,8 +731,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
     !isOnLeaveToday &&
     todaysTasksOnly.length > 0 &&
     (hasEnoughHours || settings.forceAllowFinalSubmit) &&
-    (!hasInvalidTasks || settings.forceAllowFinalSubmit) &&
-    !hasRejectedTasks;
+    (!hasInvalidTasks || settings.forceAllowFinalSubmit);
 
   // Human-readable reason the Final Submit button is disabled, so the actual
   // blocker is visible instead of a silently greyed-out button.
@@ -746,7 +742,6 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       : 'You are on leave today, so the timesheet for this date is blocked.';
     if (needsPlan) return "You haven't submitted today's Plan for the Day yet.";
     if (todaysTasksOnly.length === 0) return 'No tasks logged yet for this date. Please fill in your tasks first.';
-    if (hasRejectedTasks) return 'You have rejected task(s) that must be fixed and re-submitted before Final Submit.';
     if (hasInvalidTasks && !settings.forceAllowFinalSubmit) {
       const firstItem = invalidTasksDetails[0];
       const taskName = firstItem?.task?.title || 'Task';
@@ -758,7 +753,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       return `Minimum 8 hours required to Final Submit. You need ${formatDuration(remaining)} more logged (${formatDuration(totalCombinedMinutes)} / 8h 00m logged).`;
     }
     return null;
-  }, [isSubmitting, isOnLeaveToday, leaveStatusData?.status, needsPlan, todaysTasksOnly, hasRejectedTasks, hasInvalidTasks, invalidTasksDetails, hasEnoughHours, settings.forceAllowFinalSubmit, totalCombinedMinutes]);
+  }, [isSubmitting, isOnLeaveToday, leaveStatusData?.status, needsPlan, todaysTasksOnly, hasInvalidTasks, invalidTasksDetails, hasEnoughHours, settings.forceAllowFinalSubmit, totalCombinedMinutes]);
 
 
   const handleSaveTask = async (taskData: Task) => {
@@ -931,7 +926,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       }
 
       // Check for invalid durations in draft tasks
-      const hasInvalidDuration = tasksToValidate.some(t => calculateTaskMinutes(t) <= 0);
+      const hasInvalidDuration = todaysTasksOnly.some(t => calculateTaskMinutes(t) <= 0);
       if (hasInvalidDuration) {
         toast({
           title: 'Invalid Time Entries',

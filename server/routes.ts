@@ -2421,8 +2421,8 @@ export async function registerRoutes(
         const submitRules = await getTimesheetRules();
         const nowForWindow = new Date();
         const invalidEntries = entries
-          .filter(e => e.status === 'draft' || e.status === 'pending' || e.status === 'resubmitted' || e.status === 'rejected')
-          .filter(e => isWithinSubmissionWindow(date, nowForWindow, e.status === 'rejected' ? e.approvedAt : null))
+          .filter(e => e.status === 'draft' || e.status === 'pending' || e.status === 'resubmitted')
+          .filter(e => isWithinSubmissionWindow(date, nowForWindow, null))
           .map(e => ({ entry: e, problems: validateWithRules(e, submitRules, "submit") }))
           .filter(x => x.problems.length > 0);
         if (invalidEntries.length > 0) {

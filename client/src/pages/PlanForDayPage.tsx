@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import { CheckCircle2, Circle, ArrowRight, ArrowLeft, Send, AlertTriangle, Clock, Calendar as CalendarIcon, ClipboardList, Target, Power, PowerOff, Lock, ArrowUp, ArrowDown, Search as PlannedTaskSearchIcon, ChevronUp, ChevronDown, Minus, ShieldCheck, Loader2, X } from 'lucide-react';
+import { CheckCircle2, Circle, ArrowRight, ArrowLeft, Send, AlertTriangle, Clock, Calendar as CalendarIcon, ClipboardList, Target, Power, PowerOff, Lock, ArrowUp, ArrowDown, Search as PlannedTaskSearchIcon, ChevronUp, ChevronDown, Minus, ShieldCheck, Loader2, X, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, addDays } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -36,6 +36,7 @@ export default function PlanForDayPage() {
   const [serverTimeOffset, setServerTimeOffset] = useState(0);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isDismissedWarning, setIsDismissedWarning] = useState(false);
+  const [leftWidthPct, setLeftWidthPct] = useState(50);
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const isController = user?.role === 'admin' || user?.role === 'manager' || user?.employeeCode === 'E0046';
@@ -647,15 +648,23 @@ export default function PlanForDayPage() {
   const submitPlanMutation = useMutation({
     mutationFn: async (payload: any) => {
       const res = await apiRequest('POST', '/api/daily-plans', payload);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || body?.message || 'Failed to submit plan.');
+      }
       return res.json();
+    },
+    onMutate: () => {
+      // Optimistic: show success overlay immediately so it feels instant
+      setIsSubmitted(true);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/daily-plans/today', user?.id] });
-      // Show instant success overlay, then navigate after a brief moment
-      setIsSubmitted(true);
-      setTimeout(() => setLocation('/tracker'), 1800);
+      setTimeout(() => setLocation('/tracker'), 1500);
     },
     onError: (err: any) => {
+      // Revert optimistic update
+      setIsSubmitted(false);
       toast({ title: 'Submission Failed', description: err.message || 'Failed to submit plan.', variant: 'destructive' });
     },
   });
@@ -737,6 +746,24 @@ export default function PlanForDayPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timingErrors.length]);
+
+  // Drag-to-resize handler for the split panel divider
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startPct = leftWidthPct;
+    const onMove = (mv: MouseEvent) => {
+      const containerWidth = document.getElementById('plan-split-container')?.getBoundingClientRect().width || window.innerWidth;
+      const delta = ((mv.clientX - startX) / containerWidth) * 100;
+      setLeftWidthPct(pct => Math.min(75, Math.max(25, startPct + delta)));
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
 
 
   if (isLoadingPlan || isLoadingTasks) {
@@ -965,48 +992,54 @@ export default function PlanForDayPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#020617] text-white p-4 md:p-8 page-bg-fix">
-      <header className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between mb-12 gap-6">
-        <div className="flex items-center gap-6">
-          <div className="w-16 h-16 bg-blue-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-blue-500/20">
-            <ClipboardList className="w-8 h-8 text-white" />
-          </div>
-          <div>
-            <h1 className="text-4xl font-black tracking-tight" style={{ fontFamily: 'Space Grotesk' }}>PLAN FOR TODAY</h1>
-            <p className="text-slate-400 font-bold uppercase text-xs tracking-widest mt-1 flex items-center gap-2">
-              <CalendarIcon className="w-4 h-4 text-blue-500" /> {format(new Date(), 'EEEE, MMMM do')}
-            </p>
-          </div>
+    <div className="bg-[#020617] text-white flex flex-col page-bg-fix" style={{ height: '100vh' }}>
+      <header className="flex items-center justify-end px-4 py-2 gap-2 shrink-0 border-b border-slate-800/50">
+        <div className="flex items-center gap-2 bg-slate-900/50 p-1.5 rounded-2xl border border-slate-800">
+          <button
+            title="Daily Plan"
+            onClick={() => setActiveTab('plan')}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
+              activeTab === 'plan' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            <ClipboardList className="w-4 h-4" />
+          </button>
+          <button
+            title="Plan History"
+            onClick={() => setActiveTab('history')}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
+              activeTab === 'history' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            <History className="w-4 h-4" />
+          </button>
         </div>
 
-        <div className="flex items-center gap-3 bg-slate-900/50 p-2 rounded-2xl border border-slate-800">
-          <Button variant="ghost" onClick={() => setActiveTab('plan')} className={`rounded-xl font-black text-xs px-6 py-5 ${activeTab === 'plan' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400'}`}>DAILY PLAN</Button>
-          <Button variant="ghost" onClick={() => setActiveTab('history')} className={`rounded-xl font-black text-xs px-6 py-5 ${activeTab === 'history' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400'}`}>PLAN HISTORY</Button>
+        {isController && (
+          <div className="flex gap-2 pl-2 border-l border-slate-800">
+            <Button onClick={() => sendReminderMutation.mutate()} size="sm" variant="outline" className="rounded-xl border-amber-500/20 text-amber-500 hover:bg-amber-500/10">Remind All</Button>
+            <Button onClick={() => sendEODReportMutation.mutate()} size="sm" variant="outline" className="rounded-xl border-green-500/20 text-green-500 hover:bg-green-500/10">EOD Report</Button>
+          </div>
+        )}
 
-          {isController && (
-            <div className="flex gap-2 ml-4 pl-4 border-l border-slate-800">
-              <Button onClick={() => sendReminderMutation.mutate()} size="sm" variant="outline" className="rounded-xl border-amber-500/20 text-amber-500 hover:bg-amber-500/10">Remind All</Button>
-              <Button onClick={() => sendEODReportMutation.mutate()} size="sm" variant="outline" className="rounded-xl border-green-500/20 text-green-500 hover:bg-green-500/10">EOD Report</Button>
-            </div>
-          )}
-
-          {isController && (
-            <>
-              <Button onClick={() => toggleLatePlanOverrideMutation.mutate(!Boolean(settings?.allowLatePlanSubmission))} size="sm" className={`rounded-xl font-black text-xs px-4 py-5 ${settings?.allowLatePlanSubmission ? 'bg-amber-600' : 'bg-slate-700'}`}>
-                {settings?.allowLatePlanSubmission ? 'LATE PLAN ON' : 'LATE PLAN OFF'}
-              </Button>
-              <Button onClick={() => toggleWindowMutation.mutate(!isWindowOpen)} size="sm" className={`rounded-xl font-black text-xs px-4 py-5 ${isWindowOpen ? 'bg-red-600/80' : 'bg-green-600'}`}>
-                {isWindowOpen ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
-              </Button>
-            </>
-          )}
-        </div>
+        {isController && (
+          <>
+            <Button onClick={() => toggleLatePlanOverrideMutation.mutate(!Boolean(settings?.allowLatePlanSubmission))} size="sm" className={`rounded-xl font-black text-xs px-3 h-9 ${settings?.allowLatePlanSubmission ? 'bg-amber-600' : 'bg-slate-700'}`}>
+              {settings?.allowLatePlanSubmission ? 'LATE ON' : 'LATE OFF'}
+            </Button>
+            <Button onClick={() => toggleWindowMutation.mutate(!isWindowOpen)} size="sm" className={`rounded-xl font-black text-xs px-3 h-9 ${isWindowOpen ? 'bg-red-600/80' : 'bg-green-600'}`}>
+              {isWindowOpen ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
+            </Button>
+          </>
+        )}
       </header>
 
       {activeTab === 'history' ? (
-        <HistorySection historyDate={historyDate} setHistoryDate={setHistoryDate} isLoadingHistory={isLoadingHistory} historyData={historyData} today={today} />
+        <div className="flex-1 overflow-auto p-6">
+          <HistorySection historyDate={historyDate} setHistoryDate={setHistoryDate} isLoadingHistory={isLoadingHistory} historyData={historyData} today={today} />
+        </div>
       ) : isAlreadySubmittedAndBlocked ? (
-        <div className="flex flex-col h-[calc(100vh-250px)] items-center justify-center p-8 text-center">
+        <div className="flex-1 flex items-center justify-center p-8 text-center">
           <div className="bg-slate-900/50 p-12 rounded-3xl border border-blue-500/20 max-w-lg w-full">
             <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-8" />
             <h1 className="text-3xl font-extrabold mb-4">Today's Plan Ready!</h1>
@@ -1018,7 +1051,7 @@ export default function PlanForDayPage() {
           </div>
         </div>
       ) : isOnLeaveToday ? (
-        <div className="flex flex-col h-[calc(100vh-250px)] items-center justify-center p-8 text-center">
+        <div className="flex-1 flex items-center justify-center p-8 text-center">
           <div className="bg-slate-900/50 p-12 rounded-3xl border border-amber-500/30 max-w-lg w-full">
             <CalendarIcon className="w-12 h-12 text-amber-400 mx-auto mb-8" />
             <h1 className="text-3xl font-extrabold mb-4">Leave Applied for Today</h1>
@@ -1031,7 +1064,7 @@ export default function PlanForDayPage() {
           </div>
         </div>
       ) : isWindowClosedNotSubmitted ? (
-        <div className="flex flex-col h-[calc(100vh-250px)] items-center justify-center p-8 text-center">
+        <div className="flex-1 flex items-center justify-center p-8 text-center">
           <div className="bg-slate-900/50 p-12 rounded-3xl border border-red-500/20 max-w-lg w-full">
             <PowerOff className="w-12 h-12 text-red-500 mx-auto mb-8" />
             <h1 className="text-3xl font-extrabold mb-4">Plan Window Closed</h1>
@@ -1040,36 +1073,37 @@ export default function PlanForDayPage() {
           </div>
         </div>
       ) : !showUnselectedForm ? (
-        <div className="space-y-6">
-          {isOnApprovedOD && (
-            <div className="bg-violet-500/10 border border-violet-500/30 rounded-2xl p-4 flex items-center gap-4 text-violet-300">
-              <ShieldCheck className="w-6 h-6" />
-              <div>
-                <p className="font-black text-sm uppercase">On Approved On-Duty (OD)</p>
-                <p className="text-xs opacity-80">
-                  {odIsFullDay
-                    ? "You're on OD for the whole day — the Plan for the Day isn't required today."
-                    : odWindow
-                      ? `You're on OD from ${formatODTime(odWindow.from)} to ${formatODTime(odWindow.to)} — that time is exempt from planning. Your required hours for today are reduced to ${Math.floor(requiredMinutes / 60)}h ${requiredMinutes % 60}m instead of the usual 9h.`
-                      : "You're on approved OD right now — the Plan for the Day is optional during this time."}
-                </p>
-              </div>
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Slim notification banners */}
+          {(isOnApprovedOD || (isNearCutoff && !isOnApprovedOD)) && (
+            <div className="shrink-0 px-3 pt-2 space-y-1">
+              {isOnApprovedOD && (
+                <div className="bg-violet-500/10 border border-violet-500/30 rounded-xl px-4 py-2 flex items-center gap-3 text-violet-300">
+                  <ShieldCheck className="w-4 h-4 shrink-0" />
+                  <p className="text-xs font-bold">
+                    On Approved OD —
+                    {odIsFullDay
+                      ? " Plan not required today."
+                      : odWindow
+                        ? ` ${formatODTime(odWindow.from)}–${formatODTime(odWindow.to)} exempt. Required: ${Math.floor(requiredMinutes / 60)}h ${requiredMinutes % 60}m.`
+                        : " Plan optional during OD."}
+                  </p>
+                </div>
+              )}
+              {isNearCutoff && !isOnApprovedOD && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-2 flex items-center gap-3 text-amber-400">
+                  <Clock className="w-4 h-4 animate-pulse shrink-0" />
+                  <p className="text-xs font-bold">Plan Window Closing in {minutesUntilCutoff} minutes!</p>
+                </div>
+              )}
             </div>
           )}
 
-          {isNearCutoff && !isOnApprovedOD && (
-            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-center gap-4 text-amber-400">
-              <Clock className="w-6 h-6 animate-pulse" />
-              <div>
-                <p className="font-black text-sm uppercase">Plan Window Closing Soon!</p>
-                <p className="text-xs opacity-80">{minutesUntilCutoff} minutes remaining.</p>
-              </div>
-            </motion.div>
-          )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-[calc(100vh-250px)] min-h-[500px]">
-            <Card className="bg-slate-900/60 border-slate-800 flex flex-col h-full overflow-hidden shadow-xl">
-              <CardHeader className="border-b border-slate-800/50 p-4 space-y-4">
+          {/* Resizable split panels */}
+          <div id="plan-split-container" className="flex-1 flex overflow-hidden">
+            {/* Left panel — Available Tasks */}
+            <div className="flex flex-col overflow-hidden bg-slate-900/60 border-r border-slate-800" style={{ width: `${leftWidthPct}%` }}>
+              <div className="border-b border-slate-800/50 p-4 space-y-4 shrink-0">
                 <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
                   <CardTitle className="text-xl flex items-center gap-3 text-slate-200">
                     <Target className="w-5 h-5 text-slate-400" /> Available Tasks
@@ -1147,7 +1181,7 @@ export default function PlanForDayPage() {
                     )}
                   </div>
                 </div>
-              </CardHeader>
+              </div>
               <ScrollArea className="flex-1 p-4">
                 <div className="space-y-3">
                   {filteredAvailableTasks.length === 0 && !isLoadingTasks && (
@@ -1209,10 +1243,20 @@ export default function PlanForDayPage() {
                   })}
                 </div>
               </ScrollArea>
-            </Card>
+            </div>
 
-            <Card className="bg-slate-900/60 border-blue-500/10 flex flex-col h-full overflow-hidden shadow-xl">
-              <CardHeader className="bg-blue-500/5 border-b border-blue-500/10 pb-4">
+            {/* Drag handle divider */}
+            <div
+              onMouseDown={startResize}
+              className="w-1.5 shrink-0 bg-slate-800 hover:bg-blue-500/60 cursor-col-resize transition-colors active:bg-blue-500 flex items-center justify-center group"
+              title="Drag to resize"
+            >
+              <div className="w-0.5 h-8 rounded-full bg-slate-600 group-hover:bg-blue-400 group-active:bg-blue-300 transition-colors" />
+            </div>
+
+            {/* Right panel — Your Plan */}
+            <div className="flex flex-col overflow-hidden bg-slate-900/40 border-l border-slate-800/30" style={{ width: `${100 - leftWidthPct}%` }}>
+              <div className="bg-blue-500/5 border-b border-blue-500/10 pb-4 p-4 shrink-0">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-xl flex items-center gap-3 text-blue-400 font-black">YOUR PLAN</CardTitle>
                   <div className="bg-blue-500/20 px-3 py-1 rounded-full border border-blue-500/30">
@@ -1223,7 +1267,7 @@ export default function PlanForDayPage() {
                   <PlannedTaskSearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500/50" />
                   <Input placeholder="Search your plan..." value={plannedTaskSearch} onChange={(e) => setPlannedTaskSearch(e.target.value)} className="bg-slate-950/50 border-blue-500/20 pl-10" />
                 </div>
-              </CardHeader>
+              </div>
               <ScrollArea className="flex-1 p-4">
                 <div className="space-y-4">
                   {selectedTasks.length === 0 && (
@@ -1390,11 +1434,12 @@ export default function PlanForDayPage() {
                   </Button>
                 </div>
               </div>
-            </Card>
+            </div>
           </div>
         </div>
       ) : (
-        <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="max-w-4xl mx-auto">
+        <div className="flex-1 overflow-auto p-6">
+          <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="max-w-4xl mx-auto">
           <Card className="bg-slate-900/80 border-amber-500/20 backdrop-blur-xl">
             <CardHeader className="bg-amber-500/5 border-b border-amber-500/10 p-6">
               <div className="flex items-center gap-4">
@@ -1431,7 +1476,8 @@ export default function PlanForDayPage() {
               </div>
             </CardContent>
           </Card>
-        </motion.div>
+          </motion.div>
+        </div>
       )}
     </div>
   );

@@ -18,7 +18,7 @@ export interface StageToggle {
 }
 
 export interface ValidationRules {
-  quantify: StageToggle & { requireNumber: boolean };
+  quantify: StageToggle & { requireNumber: boolean; maxWords: number };
   achievements: StageToggle & {
     minWords: number;
     allowProblemsInstead: boolean; // when Achievements is empty, a valid Problems & Issues satisfies it
@@ -36,7 +36,7 @@ export const TIMESHEET_MIN_CHARS = 10;
 
 // Only the starting point for a fresh install. Once an admin saves rules, the saved rules win.
 export const DEFAULT_VALIDATION_RULES: ValidationRules = {
-  quantify: { submit: true, approve: true, requireNumber: true },
+  quantify: { submit: true, approve: true, requireNumber: true, maxWords: 0 },
   achievements: { submit: true, approve: true, minWords: 10, allowProblemsInstead: true },
   problemAndIssues: { submit: false, approve: false },
   description: { submit: false, approve: false, minWords: 10 },
@@ -86,7 +86,7 @@ function isGibberish(text: string): boolean {
   return new Set(text.toLowerCase().replace(/\s/g, "").split("")).size < 4;
 }
 
-interface TextParams { mandatory: boolean; minWords?: number; needsNumber?: boolean }
+interface TextParams { mandatory: boolean; minWords?: number; maxWords?: number; needsNumber?: boolean }
 
 // Checks a text value. Mandatory => empty/placeholder is an error and the 10-character minimum applies.
 // Optional => empty/placeholder is fine; a filled value must still meet the minimum word count.
@@ -105,6 +105,10 @@ function checkText(label: string, value: unknown, p: TextParams): string | null 
     const words = wordCount(text);
     if (p.minWords && p.minWords > 0 && words < p.minWords) {
       return `${label} must be at least ${p.minWords} words (currently ${words})`;
+    }
+    // maxWords = 0 means unlimited (no cap).
+    if (p.maxWords && p.maxWords > 0 && words > p.maxWords) {
+      return `${label} must be at most ${p.maxWords} words (currently ${words})`;
     }
     if (p.needsNumber && !/\d/.test(text) && !NUMBER_WORDS.test(text)) {
       return `${label} must contain a measurable result, e.g. the number of items/tasks completed ("5 reports", "12 test cases")`;
@@ -131,10 +135,11 @@ export function validateWithRules(entry: any, rules: ValidationRules, stage: Val
   const problems: string[] = [];
   const push = (msg: string | null) => { if (msg) problems.push(msg); };
 
-  // Quantify Your Result — only presence + number check, no word-count minimum
+  // Quantify Your Result — presence + number check + optional max word cap
   push(checkText(L.quantify, e.quantify, {
     mandatory: rules.quantify[stage],
     needsNumber: rules.quantify.requireNumber,
+    maxWords: rules.quantify.maxWords,
   }));
 
   // Achievements, or Problems & Issues when there is no achievement
@@ -214,6 +219,9 @@ export function normalizeValidationRules(input: any): ValidationRules {
     quantify: {
       ...toggle("quantify"),
       requireNumber: bool(g("quantify").requireNumber, d.quantify.requireNumber),
+      // maxWords = 0 means no cap. DB may store a value like 15 from older admin config.
+      // Default to 0 (unlimited) so existing entries aren't blocked by a tight word limit.
+      maxWords: num(g("quantify").maxWords, d.quantify.maxWords, 10000),
     },
     achievements: {
       ...toggle("achievements"),

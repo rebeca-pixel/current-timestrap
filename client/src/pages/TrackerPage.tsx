@@ -708,7 +708,11 @@ export default function TrackerPage({ user }: TrackerPageProps) {
   const hasEnoughHours = totalCombinedMinutes >= REQUIRED_MINUTES;
 
 
-  // Check details of ALL active tasks logged for today to ensure required fields & rules are fulfilled
+  // Check details of ALL active tasks logged for today to ensure required fields & rules are fulfilled.
+  // Structural fields (project, title, times) are always required.
+  // Content field validation (quantify, tools, percentage, etc.) is handled exclusively
+  // by validateWithRules so the admin-configured rules are the single source of truth
+  // and there are no duplicate / conflicting checks.
   const invalidTasksDetails = useMemo(() => {
     const activeTasks = todaysTasksOnly.filter(t => t.serverStatus !== 'rejected');
     if (activeTasks.length === 0) return [];
@@ -720,26 +724,10 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       if (!t.title) missing.push('Title is required');
       if (!t.startTime || !t.endTime) missing.push('Start/End Time is required');
 
-      // Always-required content fields — these must have SOME real content at submit
-      // regardless of what the admin has toggled for the submit stage in validation rules.
-      const MINIMUM_CHARS = 5;
-      const isBlankVal = (v: unknown) => !v || String(v).trim().length < MINIMUM_CHARS;
-
-      if (isBlankVal(t.quantify)) missing.push('Quantify Your Result is required');
-
-
-
-      const tools = Array.isArray(t.toolsUsed) ? t.toolsUsed : [];
-      if (tools.length === 0 || !tools.some((tool: unknown) => String(tool ?? '').trim())) {
-        missing.push('Tools Used is required (select at least one)');
-      }
-
-      const pct = Number(t.percentageComplete);
-      if (!Number.isFinite(pct) || pct < 1) {
-        missing.push('Completion Percentage must be at least 1%');
-      }
-
-      // Admin-configured extra rules applied on top of the minimums above
+      // All other content-field checks come from the admin-configured validation rules.
+      // This avoids the previous duplication where hardcoded checks (e.g. 5-char min for
+      // quantify) conflicted with validateWithRules (10-char min + number requirement),
+      // causing false rejections even when fields were properly filled.
       const ruleErrors = validateWithRules(t, validationRules, 'submit');
       ruleErrors.forEach(err => missing.push(err));
 
@@ -922,7 +910,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       return;
     }
 
-    if (needsPlan) {
+    if (needsPlan && !settings.forceAllowFinalSubmit) {
       toast({
         title: 'Plan Required',
         description: 'Submit your Plan for the Day before finalizing your timesheet.',
@@ -941,8 +929,8 @@ export default function TrackerPage({ user }: TrackerPageProps) {
         return;
       }
 
-      // Validate all tasks for today
-      if (hasInvalidTasks) {
+      // Validate all tasks for today (bypassed if Force Submit is enabled)
+      if (hasInvalidTasks && !settings.forceAllowFinalSubmit) {
         const firstItem = invalidTasksDetails[0];
         toast({
           title: 'Incomplete Tasks',
@@ -953,9 +941,9 @@ export default function TrackerPage({ user }: TrackerPageProps) {
         return;
       }
 
-      // Check for invalid durations in draft tasks
+      // Check for invalid durations in draft tasks (bypassed if Force Submit is enabled)
       const hasInvalidDuration = todaysTasksOnly.some(t => calculateTaskMinutes(t) <= 0);
-      if (hasInvalidDuration) {
+      if (hasInvalidDuration && !settings.forceAllowFinalSubmit) {
         toast({
           title: 'Invalid Time Entries',
           description: 'One or more tasks have invalid start/end times. Please correct them.',
@@ -988,7 +976,11 @@ export default function TrackerPage({ user }: TrackerPageProps) {
             pmsId: task.pmsId,
             pmsSubtaskId: (task as any).pmsSubtaskId,
             keyStep: task.keyStep,
-            status: 'pending',
+            // When force submit is active, save as 'draft' to bypass the server's
+            // per-entry validateWithRules check (it only runs for non-draft entries).
+            // The submit-daily endpoint will transition drafts → pending and already
+            // respects forceAllowFinalSubmit on its own.
+            status: settings.forceAllowFinalSubmit ? 'draft' : 'pending',
           })
         ));
       }

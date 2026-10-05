@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import { CheckCircle2, Circle, ArrowRight, ArrowLeft, Send, AlertTriangle, Clock, Calendar as CalendarIcon, ClipboardList, Target, Power, PowerOff, Lock, ArrowUp, ArrowDown, Search as PlannedTaskSearchIcon, ChevronUp, ChevronDown, Minus, ShieldCheck, Loader2 } from 'lucide-react';
+import { CheckCircle2, Circle, ArrowRight, ArrowLeft, Send, AlertTriangle, Clock, Calendar as CalendarIcon, ClipboardList, Target, Power, PowerOff, Lock, ArrowUp, ArrowDown, Search as PlannedTaskSearchIcon, ChevronUp, ChevronDown, Minus, ShieldCheck, Loader2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, addDays } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -35,6 +35,7 @@ export default function PlanForDayPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [serverTimeOffset, setServerTimeOffset] = useState(0);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isDismissedWarning, setIsDismissedWarning] = useState(false);
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const isController = user?.role === 'admin' || user?.role === 'manager' || user?.employeeCode === 'E0046';
@@ -517,10 +518,12 @@ export default function PlanForDayPage() {
 
     if (!planStatus?.submitted && selectedTasks.length === 0) {
       const autoTasks = availableTasks.filter((task: any) => task.isAutoSelected);
-      // Use current time (not anchor - 15) to filter which breaks have already passed
+      // Use current time to filter which breaks should be included
       const now = new Date();
       const realNowMinutes = now.getHours() * 60 + now.getMinutes();
-      const breaks = [
+
+      // Break definitions with their configured start/end times
+      const BREAK_DEFINITIONS = [
         {
           id: 'break-morning',
           task_name: 'Morning Break',
@@ -528,7 +531,8 @@ export default function PlanForDayPage() {
           isBreak: true,
           durationMinutes: 15,
           startTime: '11:00',
-          endTime: '11:15'
+          endTime: '11:15',
+          startMinutes: 11 * 60,
         },
         {
           id: 'break-lunch',
@@ -537,7 +541,8 @@ export default function PlanForDayPage() {
           isBreak: true,
           durationMinutes: 30,
           startTime: '14:00',
-          endTime: '14:30'
+          endTime: '14:30',
+          startMinutes: 14 * 60,
         },
         {
           id: 'break-evening',
@@ -546,13 +551,19 @@ export default function PlanForDayPage() {
           isBreak: true,
           durationMinutes: 15,
           startTime: '17:00',
-          endTime: '17:15'
-        }
-      ].filter((breakItem) => {
-        // Only include breaks that haven't fully passed yet
-        const end = toMinutes(breakItem.endTime);
-        return end > realNowMinutes;
-      });
+          endTime: '17:15',
+          startMinutes: 17 * 60,
+        },
+      ];
+
+      const breaks = BREAK_DEFINITIONS.filter((breakItem) => {
+        // Only include breaks whose start time hasn't fully passed yet
+        // (show a break once its start time is reached or is upcoming)
+        const endMin = toMinutes(breakItem.endTime);
+        return endMin > realNowMinutes;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      }).map(({ startMinutes: _sm, ...rest }) => rest);
+
       if (autoTasks.length > 0 || breaks.length > 0) {
         setSelectedTasks(buildScheduledTasks([...autoTasks, ...breaks]));
       }
@@ -685,6 +696,15 @@ export default function PlanForDayPage() {
   }, 0);
   const timingErrors = getTimingErrors(selectedTasks);
 
+  // Break timing gate: breaks are auto-added to the plan panel only when their
+  // scheduled start time has not yet fully passed (end time > now). This ensures
+  // Morning Break (11:00), Lunch (14:00) and Evening Break (17:00) appear only
+  // at the appropriate time of day. Regular tasks are always selectable.
+  const currentMinutesOfDay = currentTime.getHours() * 60 + currentTime.getMinutes();
+  // Helper to check if a given break's start time has been reached
+  const isBreakSelectable = (breakStartMinutes: number) => currentMinutesOfDay >= breakStartMinutes;
+
+
   // Standard workday used for the 9-hour requirement: 9:00 AM - 6:00 PM (540 min).
   const STANDARD_DAY_MINUTES = 540;
   const STANDARD_DAY_START_MIN = 9 * 60;
@@ -708,6 +728,16 @@ export default function PlanForDayPage() {
   const requiredMinutes = Math.max(0, STANDARD_DAY_MINUTES - odOverlapMinutes - reducedByApprovedHours);
   const isValidPlan = totalWorkingMinutes >= requiredMinutes && timingErrors.length === 0;
   const isOnLeaveToday = !!leaveStatusData?.hasLeave;
+
+  // Reset the dismissed-warning state whenever a new set of timing errors appears
+  // so that fresh errors are never silently hidden.
+  useEffect(() => {
+    if (timingErrors.length > 0) {
+      setIsDismissedWarning(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timingErrors.length]);
+
 
   if (isLoadingPlan || isLoadingTasks) {
     return (
@@ -816,6 +846,21 @@ export default function PlanForDayPage() {
       toast({ title: 'Invalid Timings', description: validationErrors[0], variant: 'destructive' });
       return;
     }
+
+    // Normalize selected tasks: sort by startTime and assign clean order numbers
+    const normalized = [...selectedTasks]
+      .sort((a, b) => toMinutes(a.startTime || a.scheduleData?.startTime || '23:59') - toMinutes(b.startTime || b.scheduleData?.startTime || '23:59'))
+      .map((task, idx) => ({
+        ...task,
+        order: idx + 1,
+        scheduleData: {
+          ...(task.scheduleData || {}),
+          order: idx + 1,
+          startTime: task.startTime || task.scheduleData?.startTime,
+          endTime: task.endTime || task.scheduleData?.endTime,
+          durationMinutes: task.durationMinutes || task.scheduleData?.durationMinutes,
+        },
+      }));
 
     const unselected = availableTasks.filter((task: any) => !selectedTasks.find((selected: any) => selected.id === task.id))
       .map((task: any) => ({
@@ -1187,7 +1232,9 @@ export default function PlanForDayPage() {
                     </div>
                   )}
 
-                  {filteredSelectedTasks.map((task: any, index: number) => (
+                  {[...filteredSelectedTasks]
+                    .sort((a, b) => toMinutes(a.startTime || a.scheduleData?.startTime || '23:59') - toMinutes(b.startTime || b.scheduleData?.startTime || '23:59'))
+                    .map((task: any, index: number) => (
                     <div key={task.instanceId} className="rounded-2xl border border-blue-500/20 bg-slate-950/60 p-4 space-y-3">
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -1274,27 +1321,47 @@ export default function PlanForDayPage() {
                       {selectedTasks.length === 0 ? (
                         <p className="text-sm text-slate-500">No tasks selected yet.</p>
                       ) : (
-                        selectedTasks.map((task: any, index: number) => (
-                          <div key={`${task.id}-${index}`} className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-xs font-mono text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">
-                                {task.scheduleData?.startTime || task.startTime || '9:00'} - {task.scheduleData?.endTime || task.endTime || '10:00'}
-                              </span>
-                              <span className="text-[10px] text-slate-400 uppercase ml-auto text-right">{task.projectName}</span>
-                            </div>
-                            <p className="text-sm font-medium text-slate-200 line-clamp-1">{task.task_name}</p>
-                          </div>
-                        ))
+                        [...selectedTasks]
+                          .sort((a, b) => toMinutes(a.startTime || a.scheduleData?.startTime || '23:59') - toMinutes(b.startTime || b.scheduleData?.startTime || '23:59'))
+                          .map((task: any, index: number) => {
+                            const isBreak = !!task.isBreak;
+                            const breakStartMin = isBreak ? toMinutes(task.startTime || task.scheduleData?.startTime || '23:59') : 0;
+                            const isUpcoming = isBreak && !isBreakSelectable(breakStartMin);
+                            return (
+                              <div key={`${task.id}-${index}`} className={`rounded-xl border p-3 ${isBreak ? 'border-slate-700/40 bg-slate-800/30' : 'border-blue-500/20 bg-blue-500/5'}`}>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className={`text-xs font-mono px-2 py-0.5 rounded ${isBreak ? 'text-slate-400 bg-slate-700/40' : 'text-blue-400 bg-blue-500/10'}`}>
+                                    {task.scheduleData?.startTime || task.startTime || '9:00'} - {task.scheduleData?.endTime || task.endTime || '10:00'}
+                                  </span>
+                                  {isBreak && (
+                                    <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${isUpcoming ? 'text-amber-400/70 bg-amber-500/10' : 'text-slate-500 bg-slate-800'}`}>
+                                      {isUpcoming ? 'Upcoming' : 'Break'}
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] text-slate-400 uppercase ml-auto text-right">{task.projectName}</span>
+                                </div>
+                                <p className={`text-sm font-medium line-clamp-1 ${isBreak ? 'text-slate-400' : 'text-slate-200'}`}>{task.task_name}</p>
+                              </div>
+                            );
+                          })
                       )}
                     </div>
                   )}
                 </div>
 
                 <div className="pt-2 border-t border-slate-800/50">
-                  {timingErrors.length > 0 && (
-                    <div className="mb-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30 space-y-1.5">
+                  {timingErrors.length > 0 && !isDismissedWarning && (
+                    <div className="mb-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30 space-y-1.5 relative">
+                      <button
+                        type="button"
+                        onClick={() => setIsDismissedWarning(true)}
+                        className="absolute top-2 right-2 text-red-400/60 hover:text-red-300 transition-colors rounded p-0.5 hover:bg-red-500/10"
+                        aria-label="Dismiss warning"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                       {timingErrors.map((err, i) => (
-                        <div key={i} className="flex items-start gap-2 text-xs text-red-400">
+                        <div key={i} className="flex items-start gap-2 text-xs text-red-400 pr-5">
                           <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                           <span>{err}</span>
                         </div>

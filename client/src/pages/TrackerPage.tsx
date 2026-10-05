@@ -714,11 +714,35 @@ export default function TrackerPage({ user }: TrackerPageProps) {
     if (activeTasks.length === 0) return [];
     return activeTasks.map(t => {
       const missing: string[] = [];
-      if (!t.project) missing.push('Project');
-      if (!t.title) missing.push('Title');
-      if (!t.startTime || !t.endTime) missing.push('Start/End Time');
+
+      // Always-required structural fields (cannot be disabled by admin rules)
+      if (!t.project) missing.push('Project is required');
+      if (!t.title) missing.push('Title is required');
+      if (!t.startTime || !t.endTime) missing.push('Start/End Time is required');
+
+      // Always-required content fields — these must have SOME real content at submit
+      // regardless of what the admin has toggled for the submit stage in validation rules.
+      const MINIMUM_CHARS = 5;
+      const isBlankVal = (v: unknown) => !v || String(v).trim().length < MINIMUM_CHARS;
+
+      if (isBlankVal(t.quantify)) missing.push('Quantify Your Result is required');
+
+
+
+      const tools = Array.isArray(t.toolsUsed) ? t.toolsUsed : [];
+      if (tools.length === 0 || !tools.some((tool: unknown) => String(tool ?? '').trim())) {
+        missing.push('Tools Used is required (select at least one)');
+      }
+
+      const pct = Number(t.percentageComplete);
+      if (!Number.isFinite(pct) || pct < 1) {
+        missing.push('Completion Percentage must be at least 1%');
+      }
+
+      // Admin-configured extra rules applied on top of the minimums above
       const ruleErrors = validateWithRules(t, validationRules, 'submit');
       ruleErrors.forEach(err => missing.push(err));
+
       return { task: t, errors: missing };
     }).filter(item => item.errors.length > 0);
   }, [todaysTasksOnly, validationRules]);
@@ -726,12 +750,16 @@ export default function TrackerPage({ user }: TrackerPageProps) {
   const hasInvalidTasks = invalidTasksDetails.length > 0;
 
   const canSubmit =
-    !isSubmitting &&
-    !needsPlan &&
-    !isOnLeaveToday &&
-    todaysTasksOnly.length > 0 &&
-    (hasEnoughHours || settings.forceAllowFinalSubmit) &&
-    (!hasInvalidTasks || settings.forceAllowFinalSubmit);
+    !isSubmitting && (
+      settings.forceAllowFinalSubmit ||
+      (
+        !needsPlan &&
+        !isOnLeaveToday &&
+        todaysTasksOnly.length > 0 &&
+        hasEnoughHours &&
+        !hasInvalidTasks
+      )
+    );
 
   // Human-readable reason the Final Submit button is disabled, so the actual
   // blocker is visible instead of a silently greyed-out button.

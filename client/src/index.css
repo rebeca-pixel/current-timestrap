@@ -2607,12 +2607,22 @@ html[style*="invert"] .site-report-card {
 }
 
 /* Dark mode: show dark version, hide light */
-html:not([style*="invert"]) .splash-logo-dark { display: block !important; }
-html:not([style*="invert"]) .splash-logo-light { display: none !important; }
+html:not([style*="invert"]) .splash-logo-dark {
+  display: block !important;
+}
+
+html:not([style*="invert"]) .splash-logo-light {
+  display: none !important;
+}
 
 /* Light mode: show light version, hide dark */
-html[style*="invert"] .splash-logo-dark { display: none !important; }
-html[style*="invert"] .splash-logo-light { display: block !important; }
+html[style*="invert"] .splash-logo-dark {
+  display: none !important;
+}
+
+html[style*="invert"] .splash-logo-light {
+  display: block !important;
+}
 
 /* ==========================================
    LOGIN CARD DARK MODE DEPTH
@@ -2724,4 +2734,51 @@ html:not([style*="invert"]) .available-tasks-scroll-container {
   flex-direction: column;
   gap: 2px;
   margin-top: 2px;
+}
+
+
+/* ==========================================================================
+   COMPACT DESKTOP SCALE
+   Makes the app look the way it does when the browser is zoomed to ~67%,
+   while the browser itself stays at 100%.
+
+   - ONE number controls everything: --app-scale (0.67 = as at 67% zoom,
+     0.8 = as at 80% zoom, 1 = original size).
+   - Scales: the header (date, bell, theme toggle, avatar), the sidebar and
+     the whole Tracker page (including the Welcome-back card).
+   - Desktop widths only (1024px and up); phones/tablets keep original size.
+   - --app-header-h is the header's real height, so full-height pages
+     (e.g. Plan for the Day) can fit exactly under it.
+   ========================================================================== */
+:root {
+  --app-header-h: 4rem;
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --app-scale: 0.67;
+    --app-header-h: calc(4rem * var(--app-scale));
+  }
+
+  /* Header */
+  [data-testid="app-header"] {
+    zoom: var(--app-scale);
+  }
+
+  /* Sidebar: shrink its width and its contents by the same amount */
+  [data-slot="sidebar-wrapper"] {
+    --sidebar-width: calc(14rem * var(--app-scale)) !important;
+    --sidebar-width-icon: calc(3.5rem * var(--app-scale)) !important;
+  }
+
+  [data-sidebar="sidebar"] [data-sidebar="header"],
+  [data-sidebar="sidebar"] [data-sidebar="content"],
+  [data-sidebar="sidebar"] [data-sidebar="footer"] {
+    zoom: var(--app-scale);
+  }
+
+  /* Tracker page (everything under the header) */
+  [data-testid="tracker-page"] {
+    zoom: var(--app-scale);
+  }
 }

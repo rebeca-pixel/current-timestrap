@@ -5,10 +5,10 @@ import {
   isSameDay, isSameMonth,
 } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  fetchGoogleStatus, 
+import {
+  fetchGoogleStatus,
   disconnectGoogle as disconnectPmsGoogle,
-  type GoogleStatus 
+  type GoogleStatus
 } from "@/lib/googleCalendar";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -468,6 +468,23 @@ const getIsLightMode = (): boolean => {
   if (typeof document === "undefined") return false;
   return document.documentElement.getAttribute("style")?.includes("invert") ?? false;
 };
+
+// getIsLightMode() is only read while rendering, so toggling the app theme used to leave the old
+// (now wrong) colours on screen and the calendar turned black. This hook watches the <html> element
+// and re-renders the page the moment the theme changes, so the calendar stays white in BOTH themes
+// without needing a refresh.
+function useThemeSync(): boolean {
+  const [light, setLight] = useState<boolean>(getIsLightMode);
+  useEffect(() => {
+    const sync = () => setLight(prev => { const next = getIsLightMode(); return prev === next ? prev : next; });
+    const obs = new MutationObserver(sync);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class", "data-theme"] });
+    window.addEventListener("storage", sync);
+    sync();
+    return () => { obs.disconnect(); window.removeEventListener("storage", sync); };
+  }, []);
+  return light;
+}
 
 // ─── Components ───────────────────────────────────────────────────────────────
 
@@ -1378,6 +1395,7 @@ function EventModal({ event, onClose, onSave, onDelete, mode, user }: EventModal
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function CalendarViewPage({ user }: CalendarViewPageProps) {
+  useThemeSync(); // re-render when the app theme is toggled
   const { toast } = useToast();
   const today = new Date();
   const [selectedDate, setSelectedDate] = useState<Date>(today);
@@ -1644,7 +1662,7 @@ export default function CalendarViewPage({ user }: CalendarViewPageProps) {
         throw new Error("Failed to get Google Auth URL");
       }
       const data = await res.json();
-      
+
       // Redirect the popup to Google
       popup.location.href = data.url;
 

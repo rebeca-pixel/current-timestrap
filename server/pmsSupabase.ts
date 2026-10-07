@@ -72,31 +72,45 @@ export interface PMSSubtask {
 // Department name normalization mapping
 const normalizeDepartment = (dept: string): string => {
   const normalized = dept.toLowerCase().trim();
-  // Map variations to standard department names
+  // Map ALL observed variations from the PMS project_departments table
+  // to a single canonical department name so cross-system comparisons work.
   const departmentMappings: Record<string, string> = {
+    // Software
     'software': 'software',
-    'software developers': 'software',
     'software developer': 'software',
+    'software developers': 'software',
+    // Finance
     'finance': 'finance',
+    // Purchase
     'purchase': 'purchase',
     'purchases': 'purchase',
+    // HR
     'hr': 'hr',
     'hr & admin': 'hr',
     'hr and admin': 'hr',
     'human resources': 'hr',
     'human resources & admin': 'hr',
+    'human resource': 'hr',
+    // Operations
     'operations': 'operations',
     'operation': 'operations',
+    // Marketing
     'marketing': 'marketing',
+    // Sales
     'sales': 'sales',
+    // Admin
     'admin': 'admin',
     'administration': 'admin',
-    'it': 'it',
-    'information technology': 'it',
+    // IT / IT Support
+    'it': 'it support',
+    'it support': 'it support',
+    'information technology': 'it support',
+    'it-support': 'it support',
+    // QA
     'qa': 'qa',
     'quality assurance': 'qa',
     'testing': 'qa',
-    // presales variants
+    // Presales
     'presale': 'presales',
     'presales': 'presales',
     'pre-sales': 'presales',
@@ -111,17 +125,73 @@ const isDepartmentMatch = (userDept: string, projectDept: string): boolean => {
   return normalizeDepartment(userDept) === normalizeDepartment(projectDept);
 };
 
-export const getProjects = async (userRole?: string, userEmpCode?: string, userDepartment?: string): Promise<PMSProject[]> => {
+// ---- Tracker visibility helpers -------------------------------------------
+// ---- Tracker visibility helpers -------------------------------------------
+// Keep only currently active/relevant PMS work visible on the Tracker page.
+const DONE_STATUSES = ['completed', 'complete', 'done', 'closed', 'cancelled', 'canceled'];
+
+// Compute today's date in IST (UTC+5:30) as YYYY-MM-DD
+export const getISTTodayKey = (): string => {
+  const now = new Date();
+  const utcNow = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const istNow = new Date(utcNow + (5.5 * 60 * 60 * 1000));
+  return istNow.toISOString().split('T')[0];
+};
+
+// A task is finished if its status says so, is_completed is true, or progress reached 100%.
+export const isPMSTaskCompleted = (task: any): boolean => {
+  if (!task) return false;
+  const status = String(task.status || '').trim().toLowerCase();
+  if (DONE_STATUSES.includes(status)) return true;
+  if (task.is_completed === true) return true;
+  const progress = Number(task.progress);
+  if (!isNaN(progress) && progress >= 100) return true;
+  return false;
+};
+
+// A task is active if not completed and its deadline has not passed (or it has a recurring schedule).
+export const isPMSTaskActive = (task: any, todayKey: string = getISTTodayKey()): boolean => {
+  if (!task || isPMSTaskCompleted(task)) return false;
+
+  // Recurring tasks (Daily, Weekly, Monthly) stay active according to their schedule
+  if (task.schedule_type && ['Daily', 'Weekly', 'Monthly'].includes(task.schedule_type)) {
+    return true;
+  }
+
+  const startKey = task.start_date ? String(task.start_date).substring(0, 10) : null;
+  const endKey = task.end_date ? String(task.end_date).substring(0, 10) : null;
+
+  if (startKey && startKey > todayKey) return false; // not started yet
+  if (endKey && endKey < todayKey) return false;     // deadline is in the past (overdue / lapsed)
+  return true;
+};
+
+// A project is active when it is not completed AND today falls inside its start..end window.
+export const isPMSProjectActive = (project: any, todayKey: string = getISTTodayKey()): boolean => {
+  if (!project) return false;
+  const status = String(project.status || '').trim().toLowerCase();
+  if (DONE_STATUSES.includes(status)) return false;
+  const progress = Number(project.progress_percentage ?? project.progress);
+  if (!isNaN(progress) && progress >= 100) return false;
+  const startKey = project.start_date ? String(project.start_date).substring(0, 10) : null;
+  const endKey = project.end_date ? String(project.end_date).substring(0, 10) : null;
+  if (startKey && startKey > todayKey) return false; // not started yet
+  if (endKey && endKey < todayKey) return false;     // timeline has lapsed (overdue / expired)
+  return true;
+};
+
+export const getProjects = async (
+  userRole?: string,
+  userEmpCode?: string,
+  userDepartment?: string,
+  includeInactive: boolean = false
+): Promise<PMSProject[]> => {
   try {
-    console.log("🔍 PMS getProjects called with:", { userRole, userEmpCode, userDepartment });
-
     const isAdmin = userRole === 'admin' || userEmpCode === 'E0001' || userEmpCode === 'E0000';
-    console.log(`👤 User context: role=${userRole}, empCode=${userEmpCode}, isAdmin=${isAdmin}`);
+    const todayKey = getISTTodayKey();
 
-    console.log("📡 Executing PMS query to fetch Projects with departments...");
-
-    // Query Neon PostgreSQL using universal logic when userEmpCode is supplied
-    let query = `
+    // 1. Fetch all projects
+    const query = `
       SELECT DISTINCT
         p.id,
         p.title as project_name,
@@ -133,145 +203,142 @@ export const getProjects = async (userRole?: string, userEmpCode?: string, userD
         p.end_date,
         p.progress as progress_percentage,
         p.created_at,
-        p.updated_at
+        p.updated_at,
+        p.created_by_employee_id
       FROM projects p
+      ORDER BY p.title
     `;
-    const params: any[] = [];
+    const projectsResult: QueryResult = await pmsPool.query(query);
+    const allProjects = (projectsResult.rows as any[]) || [];
 
-    if (userEmpCode && !isAdmin) {
-      params.push(userEmpCode);
-      query += `
-        LEFT JOIN project_tasks pt ON p.id = pt.project_id
-        LEFT JOIN task_members tm ON pt.id = tm.task_id
-        LEFT JOIN employees e ON tm.employee_id = e.id
-        LEFT JOIN project_departments pd ON p.id = pd.project_id
-        WHERE (
-          LOWER(e.emp_code) = LOWER($1)
-          OR p.created_by_employee_id = (SELECT id FROM employees WHERE LOWER(emp_code) = LOWER($1))
-          OR LOWER(pd.department) = ANY (
-            SELECT LOWER(department) FROM employees WHERE LOWER(emp_code) = LOWER($1)
-          )
-        )
-      `;
-    }
-
-    query += ` ORDER BY p.title`;
-
-    const projectsResult: QueryResult = await pmsPool.query(query, params);
-    const projects = projectsResult.rows as PMSProject[] || [];
-
-    // Get all department assignments
+    // 2. Fetch all project departments
     const deptResult: QueryResult = await pmsPool.query(`
       SELECT project_id, department FROM project_departments
     `);
 
-    // Map departments to projects
     const projectDepts: Record<string, string[]> = {};
     deptResult.rows.forEach((row: any) => {
       const projId = row.project_id;
-      if (!projectDepts[projId]) {
-        projectDepts[projId] = [];
-      }
+      if (!projectDepts[projId]) projectDepts[projId] = [];
       projectDepts[projId].push(row.department);
     });
 
-    // Enrich projects with their departments
-    const enrichedProjects = projects.map(p => ({
+    // 3. If employee code is provided, fetch assigned project IDs and employee department from PMS
+    let assignedProjectIds = new Set<string>();
+    let empPmsId = '';
+    let empDeptInPMS = '';
+    if (userEmpCode) {
+      const empRes = await pmsPool.query(
+        `SELECT id, emp_code, department FROM employees WHERE LOWER(TRIM(emp_code)) = LOWER(TRIM($1))`,
+        [userEmpCode]
+      );
+      const empRow = empRes.rows[0];
+      if (empRow) {
+        empDeptInPMS = empRow.department || '';
+        empPmsId = empRow.id || '';
+        const empId = empRow.id;
+
+        // Projects where employee is assigned to a task (task member, task owner, or assigner)
+        const assignedProjRes = await pmsPool.query(
+          `SELECT DISTINCT pt.project_id
+           FROM project_tasks pt
+           LEFT JOIN task_members tm ON pt.id = tm.task_id
+           WHERE tm.employee_id = $1 OR pt.task_owner_id = $1 OR pt.assigner_id = $1`,
+          [empId]
+        );
+        assignedProjRes.rows.forEach((r: any) => {
+          if (r.project_id) assignedProjectIds.add(r.project_id);
+        });
+
+        // Also check project_members table for direct project membership
+        try {
+          const memberProjRes = await pmsPool.query(
+            `SELECT DISTINCT project_id FROM project_members WHERE employee_id = $1`,
+            [empId]
+          );
+          memberProjRes.rows.forEach((r: any) => {
+            if (r.project_id) assignedProjectIds.add(r.project_id);
+          });
+        } catch (_memberErr) {
+          // project_members table may not exist — silently ignore
+        }
+
+        // Also include projects created by this employee (using UUID comparison)
+        try {
+          const createdProjRes = await pmsPool.query(
+            `SELECT DISTINCT id FROM projects WHERE created_by_employee_id = $1`,
+            [empId]
+          );
+          createdProjRes.rows.forEach((r: any) => {
+            if (r.id) assignedProjectIds.add(r.id);
+          });
+        } catch (_createdErr) {
+          // Silently ignore if column doesn't exist
+        }
+      }
+    }
+
+    const effectiveDept = (userDepartment || empDeptInPMS || '').trim();
+
+    // 4. Enrich projects with their department array
+    let enrichedProjects = allProjects.map(p => ({
       ...p,
       department: projectDepts[p.id as any] || []
     }));
 
-    console.log(`📊 PMS projects returned: ${enrichedProjects.length} projects`);
-    if (enrichedProjects.length > 0) {
-      console.log("📋 First project sample:", JSON.stringify(enrichedProjects[0], null, 2));
-    } else {
-      console.log("⚠️ No projects found in PMS database");
-    }
+    console.log(`📊 PMS getProjects: isAdmin=${isAdmin}, empCode=${userEmpCode}, empPmsId=${empPmsId}, dept=${effectiveDept}, assignedProjCount=${assignedProjectIds.size}, totalProjects=${allProjects.length}`);
 
-    if (userEmpCode === 'E0046' || userEmpCode === 'E0048') {
-      console.log(`🔄 Applying SPECIAL RESTRICTION for ${userEmpCode}: Software Development projects only`);
-      const softwareProjects = enrichedProjects.filter(p =>
-        p.project_name.toLowerCase().includes('software development') ||
-        (Array.isArray(p.department) && p.department.some(d => d.toLowerCase().includes('software')))
-      );
-      console.log(`📊 ${userEmpCode} special filter: ${softwareProjects.length} projects`);
-      return softwareProjects;
-    }
+    // 5. Strict filtering: department is the PRIMARY gate.
+    // Even if user has 'admin' role (e.g. E0046), when they belong to a department
+    // (e.g. "Software developer"), their project list MUST be filtered to that department.
+    // Only super-admins (E0001/E0000) with no specific department bypass this filter.
+    const isSuperAdmin = (userEmpCode === 'E0001' || userEmpCode === 'E0000') && !effectiveDept;
 
-    // Only apply client-side filtering if userEmpCode was NOT supplied (to preserve universal DB-level query results)
-    if (userDepartment && !isAdmin && !userEmpCode) {
-      console.log("🔄 Applying client-side department filtering for:", userDepartment);
-      const filteredProjects = enrichedProjects.filter(project => {
-        // Handle multiple possible department field names and formats
-        let projectDepts: string[] = [];
+    if (!isSuperAdmin) {
+      enrichedProjects = enrichedProjects.filter(p => {
+        const pDepts = Array.isArray(p.department)
+          ? p.department
+          : (typeof p.department === 'string' ? [p.department] : []);
 
-        // Check for department array field (new multiple departments format)
-        if (project.department && Array.isArray(project.department)) {
-          projectDepts = project.department;
-        }
-        // Check for departments array field (alternative naming)
-        else if (project.departments && Array.isArray(project.departments)) {
-          projectDepts = project.departments;
-        }
-        // Check for single department field (legacy format)
-        else if (typeof project.department === 'string') {
-          projectDepts = [project.department];
-        }
-        else if (project.dept) {
-          projectDepts = [project.dept];
-        }
-        else if (project.department_name) {
-          projectDepts = [project.department_name];
-        }
-        // Check for comma-separated string in departments field
-        else if (typeof project.departments === 'string') {
-          projectDepts = project.departments.split(',').map((d: string) => d.trim());
+        const isDeptMatch = effectiveDept
+          ? pDepts.some((d: string) => isDepartmentMatch(effectiveDept, d))
+          : false;
+
+        // Project has explicit dept(s) but NONE match employee dept -> exclude always
+        if (pDepts.length > 0 && !isDeptMatch) return false;
+
+        // Project has NO department: fall back to direct task assignment
+        if (pDepts.length === 0) {
+          return assignedProjectIds.has(String(p.id));
         }
 
-        if (projectDepts.length === 0) {
-          console.log(`⚠️ Project ${project.project_name} has no department assigned`);
-          return false; // Exclude projects without department
-        }
-
-        // Check if user's department matches any of the project's departments
-        const isMatch = projectDepts.some(dept => isDepartmentMatch(userDepartment, dept));
-        if (isMatch) {
-          console.log(`✅ [PMS] Project "${project.project_name}" matches department "${userDepartment}"`);
-        } else {
-          // Extra log for debugging
-          if (projectDepts.length > 0) {
-            console.log(`❌ [PMS] Project "${project.project_name}" depts [${projectDepts.join(', ')}] do NOT match "${userDepartment}"`);
-          }
-        }
-        return isMatch;
+        // Project dept matches employee dept -> show
+        return true;
       });
-
-      console.log(`📊 After department filtering: ${filteredProjects.length} projects (from ${enrichedProjects.length})`);
-      return filteredProjects;
     }
 
+    // 6. Filter out completed and overdue projects unless explicitly requested
+    if (!includeInactive) {
+      enrichedProjects = enrichedProjects.filter(p => isPMSProjectActive(p, todayKey));
+    }
+
+    console.log(`📊 PMS filtered active projects returned: ${enrichedProjects.length} projects`);
     return enrichedProjects;
   } catch (error) {
     console.error("💥 Error connecting to PMS:", error);
-    return []; // Return empty array on connection issues
+    return [];
   }
 };
 
 export const getTasks = async (projectId?: string, userDepartment?: string, userEmpCode?: string, userRole?: string): Promise<PMSTask[]> => {
   try {
-    console.log("📡 Executing PMS getTasks query for project:", projectId, "userRole:", userRole, "userEmpCode:", userEmpCode);
-
-    // Check if user is an admin or specifically authorized
     const isAdmin = userRole === 'admin' || userEmpCode === 'E0001' || userEmpCode === 'E0000';
-
-    console.log(`📋 getTasks auth context: isAdmin=${isAdmin}, userEmpCode=${userEmpCode}, userRole=${userRole}, projectCode=${projectId}`);
+    const todayKey = getISTTodayKey();
 
     let query = 'SELECT *, schedule_type, schedule_data FROM project_tasks ORDER BY task_name';
     const params: any[] = [];
 
     if (projectId) {
-      // projectId is actually the project_code, need to join with projects table
-      // and filter by user assignment if userEmpCode is provided
       query = `
         SELECT DISTINCT pt.*, pt.schedule_type, pt.schedule_data FROM project_tasks pt
         INNER JOIN projects p ON pt.project_id = p.id
@@ -279,7 +346,7 @@ export const getTasks = async (projectId?: string, userDepartment?: string, user
         LEFT JOIN employees e ON tm.employee_id = e.id
         LEFT JOIN employees task_owner_employee ON task_owner_employee.id = pt.task_owner_id
         WHERE p.project_code = $1
-          AND (pt.status IS NULL OR LOWER(pt.status) != 'completed')
+          AND (pt.status IS NULL OR LOWER(pt.status) NOT IN ('completed', 'complete', 'done', 'closed', 'cancelled', 'canceled'))
           AND (
             LOWER(TRIM(COALESCE(e.emp_code, ''))) = LOWER(TRIM($2))
             OR LOWER(TRIM(COALESCE(task_owner_employee.emp_code, ''))) = LOWER(TRIM($2))
@@ -291,6 +358,7 @@ export const getTasks = async (projectId?: string, userDepartment?: string, user
       query = `
         SELECT DISTINCT pt.*
         FROM project_tasks pt
+        INNER JOIN projects p ON pt.project_id = p.id
         LEFT JOIN task_members tm ON pt.id = tm.task_id
         LEFT JOIN employees e ON tm.employee_id = e.id
         LEFT JOIN employees task_owner_employee ON task_owner_employee.id = pt.task_owner_id
@@ -298,28 +366,29 @@ export const getTasks = async (projectId?: string, userDepartment?: string, user
           LOWER(TRIM(COALESCE(e.emp_code, ''))) = LOWER(TRIM($1))
           OR LOWER(TRIM(COALESCE(task_owner_employee.emp_code, ''))) = LOWER(TRIM($1))
         )
-          AND (pt.status IS NULL OR LOWER(pt.status) != 'completed')
+          AND (pt.status IS NULL OR LOWER(pt.status) NOT IN ('completed', 'complete', 'done', 'closed', 'cancelled', 'canceled'))
         ORDER BY pt.task_name
       `;
       params.push(userEmpCode);
     }
 
     const result: QueryResult = await pmsPool.query(query, params);
-    let tasks = result.rows as PMSTask[] || [];
+    let tasks = (result.rows as PMSTask[]) || [];
+
+    // Filter out completed and overdue tasks
+    tasks = tasks.filter(t => isPMSTaskActive(t, todayKey));
     return tasks;
   } catch (error) {
     console.error("💥 Error connecting to PMS:", error);
-    return []; // Return empty array on connection issues
+    return [];
   }
 };
 
 export const getDepartmentTasks = async (userDepartment: string, userEmpCode: string, userRole: string, myTasksOnly: boolean = false): Promise<any[]> => {
   try {
-    console.log("📡 Executing PMS getDepartmentTasks query for dept:", userDepartment, "myTasksOnly:", myTasksOnly);
+    const todayKey = getISTTodayKey();
 
-    const isAdmin = userRole === 'admin' || userEmpCode === 'E0001' || userEmpCode === 'E0000';
-
-    // Fetch all projects in the department first to get their metadata
+    // Fetch active projects in the department
     const projects = await getProjects(userRole, userEmpCode, userDepartment);
     if (projects.length === 0) return [];
 
@@ -329,79 +398,45 @@ export const getDepartmentTasks = async (userDepartment: string, userEmpCode: st
       return acc;
     }, {} as Record<string, any>);
 
-    // Build WHERE clause for task visibility.
-    // Default: include tasks where the user is a task member OR the task is unassigned
-    // (so admins/managers still see department-wide work).
-    // When myTasksOnly is true, only return tasks where the user is explicitly a
-    // task member — drop unassigned rows so the "My Tasks" view only lists
-    // tasks the user personally owns.
-    //
-    // IMPORTANT: the number of placeholders ($1, $2, $3) must match the number
-    // of parameters we pass to pmsPool.query, so we build both the clause and
-    // the params together.
-    let query: string;
-    let queryParams: any[];
-    if (myTasksOnly) {
-      // Employees should only see tasks where they are a task member or owner.
-      query = `
-        SELECT DISTINCT pt.*, pt.schedule_type, pt.schedule_data FROM project_tasks pt
-        INNER JOIN projects p ON pt.project_id = p.id
-        LEFT JOIN task_members tm ON pt.id = tm.task_id
-        LEFT JOIN employees e ON tm.employee_id = e.id
-        LEFT JOIN employees task_owner_employee ON task_owner_employee.id = pt.task_owner_id
-        WHERE pt.project_id = ANY($1)
-          AND (pt.status IS NULL OR LOWER(pt.status) != 'completed')
-          AND (
-            LOWER(TRIM(COALESCE(e.emp_code, ''))) = LOWER(TRIM($2))
-            OR LOWER(TRIM(COALESCE(task_owner_employee.emp_code, ''))) = LOWER(TRIM($2))
-          )
-        ORDER BY pt.task_name
-      `;
-      queryParams = [projectIds, userEmpCode || null];
-    } else {
-      // Default employee plan view should also stay strict and exclude unassigned department tasks.
-      // Managers/admins still have their own broader views via explicit role checks elsewhere.
-      query = `
-        SELECT DISTINCT pt.*, pt.schedule_type, pt.schedule_data FROM project_tasks pt
-        INNER JOIN projects p ON pt.project_id = p.id
-        LEFT JOIN task_members tm ON pt.id = tm.task_id
-        LEFT JOIN employees e ON tm.employee_id = e.id
-        LEFT JOIN employees task_owner_employee ON task_owner_employee.id = pt.task_owner_id
-        WHERE pt.project_id = ANY($1)
-          AND (pt.status IS NULL OR LOWER(pt.status) != 'completed')
-          AND (
-            LOWER(TRIM(COALESCE(e.emp_code, ''))) = LOWER(TRIM($2))
-            OR LOWER(TRIM(COALESCE(task_owner_employee.emp_code, ''))) = LOWER(TRIM($2))
-          )
-        ORDER BY pt.task_name
-      `;
-      queryParams = [projectIds, userEmpCode || null];
-    }
+    const query = `
+      SELECT DISTINCT pt.*, pt.schedule_type, pt.schedule_data FROM project_tasks pt
+      INNER JOIN projects p ON pt.project_id = p.id
+      LEFT JOIN task_members tm ON pt.id = tm.task_id
+      LEFT JOIN employees e ON tm.employee_id = e.id
+      LEFT JOIN employees task_owner_employee ON task_owner_employee.id = pt.task_owner_id
+      WHERE pt.project_id = ANY($1)
+        AND (pt.status IS NULL OR LOWER(pt.status) NOT IN ('completed', 'complete', 'done', 'closed', 'cancelled', 'canceled'))
+        AND (
+          LOWER(TRIM(COALESCE(e.emp_code, ''))) = LOWER(TRIM($2))
+          OR LOWER(TRIM(COALESCE(task_owner_employee.emp_code, ''))) = LOWER(TRIM($2))
+        )
+      ORDER BY pt.task_name
+    `;
+    const queryParams = [projectIds, userEmpCode || null];
 
     const result: QueryResult = await pmsPool.query(query, queryParams);
     const tasks = result.rows || [];
 
+    // Filter out completed or overdue tasks and enrich with project info
+    const activeTasks = tasks
+      .filter(t => isPMSTaskActive(t, todayKey))
+      .map(task => ({
+        ...task,
+        project: projectMap[task.project_id]
+      }))
+      .filter(t => t.project && isPMSProjectActive(t.project, todayKey));
 
-    // Enrich tasks with project info
-    return tasks.map(task => ({
-      ...task,
-      project: projectMap[task.project_id]
-    }));
+    return activeTasks;
   } catch (error) {
     console.error("💥 Error in getDepartmentTasks:", error);
     return [];
   }
-
 };
 
 export const getTasksByProject = async (projectId: string, userDepartment?: string, userEmpCode?: string, userRole?: string): Promise<PMSTask[]> => {
   try {
-    console.log("🔍 PMS getTasksByProject called with projectId:", projectId, "userEmpCode:", userEmpCode, "userRole:", userRole);
-    const isAdmin = userRole === 'admin' || userEmpCode === 'E0001' || userEmpCode === 'E0000';
+    const todayKey = getISTTodayKey();
 
-    console.log("📡 Executing PMS getTasksByProject query...");
-
-    // projectId is the project_code, need to join with projects table
     const result: QueryResult = await pmsPool.query(
       `SELECT DISTINCT pt.*, pt.schedule_type, pt.schedule_data FROM project_tasks pt
        INNER JOIN projects p ON pt.project_id = p.id
@@ -409,7 +444,7 @@ export const getTasksByProject = async (projectId: string, userDepartment?: stri
        LEFT JOIN employees e ON tm.employee_id = e.id
        LEFT JOIN employees task_owner_employee ON task_owner_employee.id = pt.task_owner_id
        WHERE p.project_code = $1
-         AND (pt.status IS NULL OR LOWER(pt.status) != 'completed')
+         AND (pt.status IS NULL OR LOWER(pt.status) NOT IN ('completed', 'complete', 'done', 'closed', 'cancelled', 'canceled'))
          AND (
            LOWER(TRIM(COALESCE(e.emp_code, ''))) = LOWER(TRIM($2))
            OR LOWER(TRIM(COALESCE(task_owner_employee.emp_code, ''))) = LOWER(TRIM($2))
@@ -418,18 +453,12 @@ export const getTasksByProject = async (projectId: string, userDepartment?: stri
       [projectId, userEmpCode || null]
     );
 
-    let tasks = result.rows as PMSTask[] || [];
-    console.log(`📊 PMS tasks returned for project ${projectId}: ${tasks.length} tasks`);
-    if (tasks.length > 0) {
-      console.log("📋 First task sample:", JSON.stringify(tasks[0], null, 2));
-    } else {
-      console.log(`⚠️ No tasks found in PMS database for project ${projectId}`);
-    }
-
+    let tasks = (result.rows as PMSTask[]) || [];
+    tasks = tasks.filter(t => isPMSTaskActive(t, todayKey));
     return tasks;
   } catch (error) {
     console.error("💥 Error connecting to PMS:", error);
-    return []; // Return empty array on connection issues
+    return [];
   }
 };
 

@@ -118,14 +118,17 @@ function checkText(label: string, value: unknown, p: TextParams): string | null 
 }
 
 // "Task | Subtask | Description" is how the task text is stored.
-export function extractDescription(entry: { description?: unknown; taskDescription?: unknown }): string {
+export function extractDescription(entry: { description?: unknown; taskDescription?: unknown; task_description?: unknown }): string {
   if (entry.description !== undefined && entry.description !== null) return String(entry.description);
-  return String(entry.taskDescription ?? "").split(" | ").slice(2).join(" | ");
+  const rawDesc = entry.taskDescription ?? entry.task_description;
+  return String(rawDesc ?? "").split(" | ").slice(2).join(" | ");
 }
 
-export function extractSubTask(entry: { subTask?: unknown; taskDescription?: unknown }): string {
+export function extractSubTask(entry: { subTask?: unknown; sub_task?: unknown; taskDescription?: unknown; task_description?: unknown }): string {
   if (entry.subTask !== undefined && entry.subTask !== null) return String(entry.subTask);
-  return String(entry.taskDescription ?? "").split(" | ")[1] ?? "";
+  if (entry.sub_task !== undefined && entry.sub_task !== null) return String(entry.sub_task);
+  const rawDesc = entry.taskDescription ?? entry.task_description;
+  return String(rawDesc ?? "").split(" | ")[1] ?? "";
 }
 
 // Returns every problem found (empty array = valid).
@@ -135,8 +138,16 @@ export function validateWithRules(entry: any, rules: ValidationRules, stage: Val
   const problems: string[] = [];
   const push = (msg: string | null) => { if (msg) problems.push(msg); };
 
+  const quantifyVal = e.quantify;
+  const achievementsVal = e.achievements;
+  const problemsVal = e.problemAndIssues ?? e.problem_and_issues;
+  const toolsUsedVal = e.toolsUsed ?? e.tools_used;
+  const rawPct = e.percentageComplete ?? e.percentage_complete;
+  const keyStepVal = e.keyStep ?? e.key_step;
+  const scopeVal = e.scopeOfImprovements ?? e.scope_of_improvements;
+
   // Quantify Your Result — presence + number check + optional max word cap
-  push(checkText(L.quantify, e.quantify, {
+  push(checkText(L.quantify, quantifyVal, {
     mandatory: rules.quantify[stage],
     needsNumber: rules.quantify.requireNumber,
     maxWords: rules.quantify.maxWords,
@@ -144,24 +155,24 @@ export function validateWithRules(entry: any, rules: ValidationRules, stage: Val
 
   // Achievements, or Problems & Issues when there is no achievement
   const ach = rules.achievements;
-  if (!isBlank(e.achievements)) {
-    push(checkText(L.achievements, e.achievements, { mandatory: ach[stage], minWords: ach.minWords }));
+  if (!isBlank(achievementsVal)) {
+    push(checkText(L.achievements, achievementsVal, { mandatory: ach[stage], minWords: ach.minWords }));
   } else if (ach[stage]) {
     if (!ach.allowProblemsInstead) {
       problems.push(`${L.achievements} is required`);
-    } else if (isBlank(e.problemAndIssues)) {
+    } else if (isBlank(problemsVal)) {
       problems.push(
         `Achievements is empty: provide Achievements, or a meaningful Problems & Issues entry (min ${TIMESHEET_MIN_CHARS} characters)`
       );
     } else {
-      const err = checkText(L.problemAndIssues, e.problemAndIssues, { mandatory: true });
+      const err = checkText(L.problemAndIssues, problemsVal, { mandatory: true });
       if (err) problems.push(`Achievements is empty and ${err}`);
     }
   }
 
   // Problems & Issues as a mandatory field of its own
   if (rules.problemAndIssues[stage]) {
-    push(checkText(L.problemAndIssues, e.problemAndIssues, { mandatory: true }));
+    push(checkText(L.problemAndIssues, problemsVal, { mandatory: true }));
   }
 
   // Description
@@ -172,13 +183,12 @@ export function validateWithRules(entry: any, rules: ValidationRules, stage: Val
 
   // Tools Used (picked from a list, so "mandatory" = at least one tool)
   if (rules.toolsUsed[stage]) {
-    const tools = Array.isArray(e.toolsUsed) ? e.toolsUsed : [];
+    const tools = Array.isArray(toolsUsedVal) ? toolsUsedVal : [];
     if (!tools.some((t: unknown) => cleanText(t))) problems.push(`${L.toolsUsed} is required (select at least one tool)`);
   }
 
   // Completion Percentage
-  const raw = e.percentageComplete;
-  const pct = typeof raw === "number" ? raw : raw === null || raw === undefined || raw === "" ? NaN : Number(raw);
+  const pct = typeof rawPct === "number" ? rawPct : rawPct === null || rawPct === undefined || rawPct === "" ? NaN : Number(rawPct);
   if (!Number.isFinite(pct)) {
     if (rules.percentageComplete[stage]) problems.push(`${L.percentageComplete} is required`);
   } else if (rules.percentageComplete[stage] && (pct < rules.percentageComplete.minValue || pct > 100)) {
@@ -187,9 +197,9 @@ export function validateWithRules(entry: any, rules: ValidationRules, stage: Val
 
   // Key Step / Subtask / Scope of Improvements
   // Key Step and Subtask only need to be present (no length rule), like Tools Used.
-  if (rules.keyStep[stage] && isBlank(e.keyStep)) problems.push(`${L.keyStep} must be filled`);
+  if (rules.keyStep[stage] && isBlank(keyStepVal)) problems.push(`${L.keyStep} must be filled`);
   if (rules.subTask[stage] && isBlank(extractSubTask(e))) problems.push(`${L.subTask} must be filled`);
-  push(checkText(L.scopeOfImprovements, e.scopeOfImprovements, { mandatory: rules.scopeOfImprovements[stage] }));
+  push(checkText(L.scopeOfImprovements, scopeVal, { mandatory: rules.scopeOfImprovements[stage] }));
 
   return problems;
 }

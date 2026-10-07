@@ -562,7 +562,7 @@ export default function PlanForDayPage() {
         // (show a break once its start time is reached or is upcoming)
         const endMin = toMinutes(breakItem.endTime);
         return endMin > realNowMinutes;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
       }).map(({ startMinutes: _sm, ...rest }) => rest);
 
       if (autoTasks.length > 0 || breaks.length > 0) {
@@ -692,7 +692,20 @@ export default function PlanForDayPage() {
 
   const uniqueProjects = Array.from(new Set([
     ...availableTasks.map((t: any) => t.projectName).filter(Boolean),
-    ...allAccessibleProjects.map((p: any) => p.project_name).filter(Boolean)
+    ...allAccessibleProjects.filter((p: any) => {
+      // Only active projects: not completed and today inside start..end timeline
+      const now = new Date();
+      const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const status = String(p.status || '').trim().toLowerCase();
+      if (['completed', 'complete', 'done', 'closed'].includes(status)) return false;
+      const progress = Number(p.progress_percentage ?? p.progress);
+      if (!isNaN(progress) && progress >= 100) return false;
+      const startKey = p.start_date ? String(p.start_date).substring(0, 10) : null;
+      const endKey = p.end_date ? String(p.end_date).substring(0, 10) : null;
+      if (startKey && startKey > todayKey) return false;
+      if (endKey && endKey < todayKey) return false;
+      return true;
+    }).map((p: any) => p.project_name).filter(Boolean)
   ])).sort();
 
   const filteredSelectedTasks = selectedTasks.filter((task: any) =>
@@ -744,7 +757,7 @@ export default function PlanForDayPage() {
     if (timingErrors.length > 0) {
       setIsDismissedWarning(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timingErrors.length]);
 
   // Drag-to-resize handler for the split panel divider
@@ -998,18 +1011,16 @@ export default function PlanForDayPage() {
           <button
             title="Daily Plan"
             onClick={() => setActiveTab('plan')}
-            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
-              activeTab === 'plan' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-            }`}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${activeTab === 'plan' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
           >
             <ClipboardList className="w-4 h-4" />
           </button>
           <button
             title="Plan History"
             onClick={() => setActiveTab('history')}
-            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
-              activeTab === 'history' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-            }`}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${activeTab === 'history' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
           >
             <History className="w-4 h-4" />
           </button>
@@ -1279,73 +1290,73 @@ export default function PlanForDayPage() {
                   {[...filteredSelectedTasks]
                     .sort((a, b) => toMinutes(a.startTime || a.scheduleData?.startTime || '23:59') - toMinutes(b.startTime || b.scheduleData?.startTime || '23:59'))
                     .map((task: any, index: number) => (
-                    <div key={task.instanceId} className="rounded-2xl border border-blue-500/20 bg-slate-950/60 p-4 space-y-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-[10px] uppercase text-blue-400 font-black">#{index + 1} • {task.isAutoSelected ? 'PMS Sync' : 'Manual'}</p>
-                          <h4 className="font-black text-white mt-1">{task.task_name}</h4>
-                          <p className="text-xs text-slate-400 uppercase">{task.projectName}</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-slate-400 hover:bg-slate-800" onClick={() => reorderTask(task.instanceId, 'up')} disabled={index === 0}><ArrowUp className="w-4 h-4" /></Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-slate-400 hover:bg-slate-800" onClick={() => reorderTask(task.instanceId, 'down')} disabled={index === selectedTasks.length - 1}><ArrowDown className="w-4 h-4" /></Button>
-                          <Button variant="ghost" size="sm" onClick={() => removeTask(task.instanceId)} className="text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-xl">Cancel</Button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-[10px] uppercase text-slate-400 font-bold">Start</label>
-                          <Input type="time" value={task.startTime} onChange={(e) => updateTaskSchedule(task.instanceId, 'startTime', e.target.value)} className="bg-slate-950 border-slate-800" />
-                        </div>
-                        <div>
-                          <label className="text-[10px] uppercase text-slate-400 font-bold">End</label>
-                          <Input type="time" value={task.endTime} onChange={(e) => updateTaskSchedule(task.instanceId, 'endTime', e.target.value)} className="bg-slate-950 border-slate-800" />
-                        </div>
-                      </div>
-
-                      {!task.isBreak && (
-                        <SubtaskSelect
-                          taskId={task.id}
-                          values={task.subtaskIds || task.scheduleData?.subtaskIds || (task.subtaskId ? [task.subtaskId] : [])}
-                          onChange={(subtaskIds, subtaskNames) => updateTaskSubtask(task.instanceId, subtaskIds, subtaskNames)}
-                        />
-                      )}
-
-                      {!task.isBreak && (
-                        <ToolSelect
-                          values={
-                            task.tools
-                            || task.scheduleData?.tools
-                            || (() => {
-                              const legacy = task.tool || task.scheduleData?.tool || '';
-                              return legacy ? legacy.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
-                            })()
-                          }
-                          onChange={(tools) => updateTaskTools(task.instanceId, tools)}
-                        />
-                      )}
-
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-[10px] uppercase text-slate-500 font-bold">Duration</p>
-                          <p className="text-sm font-black text-blue-300">{Math.max(15, task.durationMinutes || 30)} minutes</p>
-                        </div>
-                        {!task.isBreak && (
-                          <div className="flex gap-1">
-                            <Button type="button" size="sm" variant="outline" className={`rounded-xl border-blue-500/30 text-xs px-2 h-7 ${task.durationMinutes === 30 ? 'bg-blue-600 text-white' : 'text-blue-300 hover:bg-blue-500/20'}`} onClick={() => setTaskDuration(task.instanceId, 30)}>30m</Button>
-                            <Button type="button" size="sm" variant="outline" className={`rounded-xl border-blue-500/30 text-xs px-2 h-7 ${task.durationMinutes === 45 ? 'bg-blue-600 text-white' : 'text-blue-300 hover:bg-blue-500/20'}`} onClick={() => setTaskDuration(task.instanceId, 45)}>45m</Button>
-                            <Button type="button" size="sm" variant="outline" className={`rounded-xl border-blue-500/30 text-xs px-2 h-7 ${task.durationMinutes === 60 ? 'bg-blue-600 text-white' : 'text-blue-300 hover:bg-blue-500/20'}`} onClick={() => setTaskDuration(task.instanceId, 60)}>1h</Button>
+                      <div key={task.instanceId} className="rounded-2xl border border-blue-500/20 bg-slate-950/60 p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-[10px] uppercase text-blue-400 font-black">#{index + 1} • {task.isAutoSelected ? 'PMS Sync' : 'Manual'}</p>
+                            <h4 className="font-black text-white mt-1">{task.task_name}</h4>
+                            <p className="text-xs text-slate-400 uppercase">{task.projectName}</p>
                           </div>
-                        )}
-                      </div>
+                          <div className="flex gap-2">
+                            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-slate-400 hover:bg-slate-800" onClick={() => reorderTask(task.instanceId, 'up')} disabled={index === 0}><ArrowUp className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-slate-400 hover:bg-slate-800" onClick={() => reorderTask(task.instanceId, 'down')} disabled={index === selectedTasks.length - 1}><ArrowDown className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="sm" onClick={() => removeTask(task.instanceId)} className="text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-xl">Cancel</Button>
+                          </div>
+                        </div>
 
-                      <div>
-                        <label className="text-[10px] uppercase text-slate-400 font-bold">Extension Reason</label>
-                        <Input placeholder="Optional reason for extension" value={task.scheduleData?.extensionReason || ''} onChange={(e) => updateTaskSchedule(task.instanceId, 'extensionReason', e.target.value)} className="bg-slate-950 border-slate-800" />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-[10px] uppercase text-slate-400 font-bold">Start</label>
+                            <Input type="time" value={task.startTime} onChange={(e) => updateTaskSchedule(task.instanceId, 'startTime', e.target.value)} className="bg-slate-950 border-slate-800" />
+                          </div>
+                          <div>
+                            <label className="text-[10px] uppercase text-slate-400 font-bold">End</label>
+                            <Input type="time" value={task.endTime} onChange={(e) => updateTaskSchedule(task.instanceId, 'endTime', e.target.value)} className="bg-slate-950 border-slate-800" />
+                          </div>
+                        </div>
+
+                        {!task.isBreak && (
+                          <SubtaskSelect
+                            taskId={task.id}
+                            values={task.subtaskIds || task.scheduleData?.subtaskIds || (task.subtaskId ? [task.subtaskId] : [])}
+                            onChange={(subtaskIds, subtaskNames) => updateTaskSubtask(task.instanceId, subtaskIds, subtaskNames)}
+                          />
+                        )}
+
+                        {!task.isBreak && (
+                          <ToolSelect
+                            values={
+                              task.tools
+                              || task.scheduleData?.tools
+                              || (() => {
+                                const legacy = task.tool || task.scheduleData?.tool || '';
+                                return legacy ? legacy.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
+                              })()
+                            }
+                            onChange={(tools) => updateTaskTools(task.instanceId, tools)}
+                          />
+                        )}
+
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-[10px] uppercase text-slate-500 font-bold">Duration</p>
+                            <p className="text-sm font-black text-blue-300">{Math.max(15, task.durationMinutes || 30)} minutes</p>
+                          </div>
+                          {!task.isBreak && (
+                            <div className="flex gap-1">
+                              <Button type="button" size="sm" variant="outline" className={`rounded-xl border-blue-500/30 text-xs px-2 h-7 ${task.durationMinutes === 30 ? 'bg-blue-600 text-white' : 'text-blue-300 hover:bg-blue-500/20'}`} onClick={() => setTaskDuration(task.instanceId, 30)}>30m</Button>
+                              <Button type="button" size="sm" variant="outline" className={`rounded-xl border-blue-500/30 text-xs px-2 h-7 ${task.durationMinutes === 45 ? 'bg-blue-600 text-white' : 'text-blue-300 hover:bg-blue-500/20'}`} onClick={() => setTaskDuration(task.instanceId, 45)}>45m</Button>
+                              <Button type="button" size="sm" variant="outline" className={`rounded-xl border-blue-500/30 text-xs px-2 h-7 ${task.durationMinutes === 60 ? 'bg-blue-600 text-white' : 'text-blue-300 hover:bg-blue-500/20'}`} onClick={() => setTaskDuration(task.instanceId, 60)}>1h</Button>
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] uppercase text-slate-400 font-bold">Extension Reason</label>
+                          <Input placeholder="Optional reason for extension" value={task.scheduleData?.extensionReason || ''} onChange={(e) => updateTaskSchedule(task.instanceId, 'extensionReason', e.target.value)} className="bg-slate-950 border-slate-800" />
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               </ScrollArea>
               <div className="p-4 bg-slate-900/50 border-t border-slate-800 flex flex-col gap-4 shrink-0">
@@ -1440,42 +1451,42 @@ export default function PlanForDayPage() {
       ) : (
         <div className="flex-1 overflow-auto p-6">
           <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="max-w-4xl mx-auto">
-          <Card className="bg-slate-900/80 border-amber-500/20 backdrop-blur-xl">
-            <CardHeader className="bg-amber-500/5 border-b border-amber-500/10 p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-amber-500/20 rounded-2xl flex items-center justify-center border border-amber-500/30"><AlertTriangle className="w-6 h-6 text-amber-500" /></div>
-                <div><CardTitle className="text-2xl font-black text-white">Controlled Deviation Required</CardTitle><p className="text-amber-500/80 font-bold text-sm uppercase">Unselected tasks require justification</p></div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-8 space-y-8">
-              <div className="p-8 rounded-3xl bg-slate-800/30 border border-slate-700/50 space-y-8">
-                <div>
-                  <Label className="text-slate-400 font-bold text-xs uppercase mb-4 block">Pending Tasks Being Postponed</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {availableTasks.filter((task: any) => !selectedTasks.find((selected: any) => selected.id === task.id)).map((task: any) => (
-                      <div key={task.id} className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 text-sm font-bold flex items-center gap-2"><Clock className="w-4 h-4 text-amber-500/50" /> {task.task_name}</div>
-                    ))}
+            <Card className="bg-slate-900/80 border-amber-500/20 backdrop-blur-xl">
+              <CardHeader className="bg-amber-500/5 border-b border-amber-500/10 p-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-amber-500/20 rounded-2xl flex items-center justify-center border border-amber-500/30"><AlertTriangle className="w-6 h-6 text-amber-500" /></div>
+                  <div><CardTitle className="text-2xl font-black text-white">Controlled Deviation Required</CardTitle><p className="text-amber-500/80 font-bold text-sm uppercase">Unselected tasks require justification</p></div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-8 space-y-8">
+                <div className="p-8 rounded-3xl bg-slate-800/30 border border-slate-700/50 space-y-8">
+                  <div>
+                    <Label className="text-slate-400 font-bold text-xs uppercase mb-4 block">Pending Tasks Being Postponed</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {availableTasks.filter((task: any) => !selectedTasks.find((selected: any) => selected.id === task.id)).map((task: any) => (
+                        <div key={task.id} className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 text-sm font-bold flex items-center gap-2"><Clock className="w-4 h-4 text-amber-500/50" /> {task.task_name}</div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-3">
+                      <Label className="text-slate-400 font-bold text-xs uppercase">Reason for Deviation *</Label>
+                      <Textarea placeholder="Justification..." value={commonReason} onChange={(e) => setCommonReason(e.target.value)} className="bg-slate-900 border-slate-700 text-white min-h-[120px]" />
+                    </div>
+                    <div className="space-y-3">
+                      <Label className="text-slate-400 font-bold text-xs uppercase">New Target Due Date *</Label>
+                      <Input type="date" value={commonNewDueDate} min={today} onChange={(e) => setCommonNewDueDate(e.target.value)} className="bg-slate-950 border-slate-800 h-16 text-lg" />
+                    </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-3">
-                    <Label className="text-slate-400 font-bold text-xs uppercase">Reason for Deviation *</Label>
-                    <Textarea placeholder="Justification..." value={commonReason} onChange={(e) => setCommonReason(e.target.value)} className="bg-slate-900 border-slate-700 text-white min-h-[120px]" />
-                  </div>
-                  <div className="space-y-3">
-                    <Label className="text-slate-400 font-bold text-xs uppercase">New Target Due Date *</Label>
-                    <Input type="date" value={commonNewDueDate} min={today} onChange={(e) => setCommonNewDueDate(e.target.value)} className="bg-slate-950 border-slate-800 h-16 text-lg" />
-                  </div>
+                <div className="flex gap-4 pt-4">
+                  <Button variant="outline" onClick={() => setShowUnselectedForm(false)} disabled={submitPlanMutation.isPending} className="px-8 py-6 rounded-2xl"><ArrowLeft className="w-5 h-5 mr-2" /> Back</Button>
+                  <Button onClick={submitPlan} className="flex-1 py-6 bg-gradient-to-r from-amber-600 to-orange-600 text-white font-black text-lg rounded-2xl" disabled={submitPlanMutation.isPending}>
+                    {submitPlanMutation.isPending ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" />SUBMITTING...</> : <>SUBMIT PLAN <Send className="w-6 h-6 ml-3" /></>}
+                  </Button>
                 </div>
-              </div>
-              <div className="flex gap-4 pt-4">
-                <Button variant="outline" onClick={() => setShowUnselectedForm(false)} disabled={submitPlanMutation.isPending} className="px-8 py-6 rounded-2xl"><ArrowLeft className="w-5 h-5 mr-2" /> Back</Button>
-                <Button onClick={submitPlan} className="flex-1 py-6 bg-gradient-to-r from-amber-600 to-orange-600 text-white font-black text-lg rounded-2xl" disabled={submitPlanMutation.isPending}>
-                  {submitPlanMutation.isPending ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" />SUBMITTING...</> : <>SUBMIT PLAN <Send className="w-6 h-6 ml-3" /></>}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
           </motion.div>
         </div>
       )}

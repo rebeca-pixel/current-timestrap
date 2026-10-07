@@ -302,11 +302,20 @@ export default function TrackerPage({ user }: TrackerPageProps) {
     enabled: !!user?.id,
   });
 
-  const availableTasks = useMemo(() => rawAvailableTasks || [], [rawAvailableTasks]);
+  // Defensive client-side guard: never show completed PMS tasks on the Tracker page
+  const availableTasks = useMemo(
+    () => (rawAvailableTasks || []).filter((t: any) => {
+      const status = String(t.status || '').trim().toLowerCase();
+      if (['completed', 'complete', 'done', 'closed'].includes(status)) return false;
+      if (t.is_completed === true) return false;
+      return !(Number(t.progress) >= 100);
+    }),
+    [rawAvailableTasks]
+  );
 
 
   // Fetch all projects for the department to populate filters
-  const { data: pmsProjects = [] } = useQuery<any[]>({
+  const { data: rawPmsProjects = [] } = useQuery<any[]>({
     queryKey: ['/api/projects', user.id],
     queryFn: async () => {
       try {
@@ -320,6 +329,24 @@ export default function TrackerPage({ user }: TrackerPageProps) {
     },
     enabled: !!user?.id,
   });
+
+  // Only active projects (not completed, today inside start..end timeline) are
+  // offered on the Tracker page.
+  const pmsProjects = useMemo(() => {
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    return rawPmsProjects.filter((p: any) => {
+      const status = String(p.status || '').trim().toLowerCase();
+      if (['completed', 'complete', 'done', 'closed'].includes(status)) return false;
+      const progress = Number(p.progress_percentage ?? p.progress);
+      if (!isNaN(progress) && progress >= 100) return false;
+      const startKey = p.start_date ? String(p.start_date).substring(0, 10) : null;
+      const endKey = p.end_date ? String(p.end_date).substring(0, 10) : null;
+      if (startKey && startKey > todayKey) return false;
+      if (endKey && endKey < todayKey) return false;
+      return true;
+    });
+  }, [rawPmsProjects]);
 
   // Fetch settings
   const { data: settings = {} } = useQuery({
@@ -724,6 +751,31 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       if (!t.title) missing.push('Title is required');
       if (!t.startTime || !t.endTime) missing.push('Start/End Time is required');
 
+      // Unfilled drafts / tasks with 0% progress:
+      if (t.percentageComplete === undefined || t.percentageComplete === null || t.percentageComplete <= 0) {
+        missing.push('Completion percentage must be greater than 0% (update your task progress)');
+      }
+
+      // Check for empty draft details
+      const hasContent = Boolean(
+        (t.quantify && t.quantify.trim()) ||
+        (t.achievements && t.achievements.trim()) ||
+        (t.description && t.description.trim()) ||
+        (t.problemAndIssues && t.problemAndIssues.trim())
+      );
+      if (!hasContent) {
+        missing.push('Task details are empty (fill in Quantify, Achievements, or Description)');
+      }
+
+      // Plan-for-day creates entries with an empty "Quantify Your Result". It must be filled in
+      // before Final Submit is enabled, even if the admin rules make it optional.
+      const quantifyText = String((t as any).quantify ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const emptyQuantifyValues = ['n/a', 'na', 'none', 'nil', 'null', 'undefined', 'no', 'nothing', 'test', '-', '--', '.', '...', 'tbd',
+        'auto-filled from daily plan', 'scheduled via plan for day'];
+      if (!quantifyText || emptyQuantifyValues.includes(quantifyText)) {
+        missing.push('Quantify Your Result is required');
+      }
+
       // All other content-field checks come from the admin-configured validation rules.
       // This avoids the previous duplication where hardcoded checks (e.g. 5-char min for
       // quantify) conflicted with validateWithRules (10-char min + number requirement),
@@ -737,8 +789,18 @@ export default function TrackerPage({ user }: TrackerPageProps) {
 
   const hasInvalidTasks = invalidTasksDetails.length > 0;
 
+  // Tasks missing Progress or Quantify Your Result. This blocks Final Submit even when the
+  // admin "force submit / 8-hour bypass" is on, so empty plan-generated entries never go through.
+  const tasksMissingProgressOrQuantify = useMemo(
+    () => invalidTasksDetails.filter(item =>
+      item.errors.some(e => e === 'Quantify Your Result is required' || e.startsWith('Completion percentage must be greater than 0%'))
+    ),
+    [invalidTasksDetails]
+  );
+  const hasMissingProgressOrQuantify = tasksMissingProgressOrQuantify.length > 0;
+
   const canSubmit =
-    !isSubmitting && (
+    !isSubmitting && !hasMissingProgressOrQuantify && (
       settings.forceAllowFinalSubmit ||
       (
         !needsPlan &&
@@ -758,6 +820,10 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       : 'You are on leave today, so the timesheet for this date is blocked.';
     if (needsPlan) return "You haven't submitted today's Plan for the Day yet.";
     if (todaysTasksOnly.length === 0) return 'No tasks logged yet for this date. Please fill in your tasks first.';
+    if (hasMissingProgressOrQuantify) {
+      const first = tasksMissingProgressOrQuantify[0];
+      return `${tasksMissingProgressOrQuantify.length} task(s) are missing Progress or Quantify Your Result (${first?.task?.title || 'Task'}). Edit each task and fill them in before Final Submit.`;
+    }
     if (hasInvalidTasks && !settings.forceAllowFinalSubmit) {
       const firstItem = invalidTasksDetails[0];
       const taskName = firstItem?.task?.title || 'Task';
@@ -769,12 +835,57 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       return `Minimum 8 hours required to Final Submit. You need ${formatDuration(remaining)} more logged (${formatDuration(totalCombinedMinutes)} / 8h 00m logged).`;
     }
     return null;
-  }, [isSubmitting, isOnLeaveToday, leaveStatusData?.status, needsPlan, todaysTasksOnly, hasInvalidTasks, invalidTasksDetails, hasEnoughHours, settings.forceAllowFinalSubmit, totalCombinedMinutes]);
+  }, [isSubmitting, isOnLeaveToday, leaveStatusData?.status, needsPlan, todaysTasksOnly, hasInvalidTasks, invalidTasksDetails, hasMissingProgressOrQuantify, tasksMissingProgressOrQuantify, hasEnoughHours, settings.forceAllowFinalSubmit, totalCombinedMinutes]);
 
 
   const handleSaveTask = async (taskData: Task) => {
     // This function is now handled in TaskEntryPage.tsx
     // Keeping minimal logic if any other direct calls exist, but normally not needed
+  };
+
+  // Quick Fill: update only Quantify + Progress from the table row. The PUT endpoint replaces the
+  // whole entry, so we resend every other field exactly as stored on the server entry.
+  const handleQuickSaveTask = async (task: Task, values: { quantify: string; percentageComplete: number; startTime: string; endTime: string; toolsUsed: string[]; subTask?: string; pmsSubtaskId?: string }) => {
+    const entry: any = (serverEntries as any[]).find((e: any) => e.id === task.id);
+    if (!entry) {
+      toast({ title: "Error", description: "Could not find this entry. Please refresh.", variant: "destructive" });
+      throw new Error('entry not found');
+    }
+    try {
+      await apiRequest('PUT', `/api/time-entries/${task.id}`, {
+        projectName: entry.projectName,
+        // Only rebuild the description if the sub task changed; otherwise keep it exactly as stored.
+        taskDescription: (values.subTask !== undefined && values.subTask !== (task.subTask || ''))
+          ? formatTaskDescription({ title: task.title, subTask: values.subTask, description: task.description })
+          : entry.taskDescription,
+        problemAndIssues: entry.problemAndIssues || '',
+        quantify: values.quantify,
+        achievements: entry.achievements || '',
+        scopeOfImprovements: entry.scopeOfImprovements || '',
+        toolsUsed: values.toolsUsed,
+        startTime: values.startTime,
+        endTime: values.endTime,
+        totalHours: (values.startTime === entry.startTime && values.endTime === entry.endTime)
+          ? entry.totalHours
+          : formatDuration(deriveMinutesFromTimes(values.startTime, values.endTime)),
+        percentageComplete: values.percentageComplete,
+        pmsId: entry.pmsId || undefined,
+        pmsSubtaskId: values.pmsSubtaskId || entry.pmsSubtaskId || undefined,
+        keyStep: entry.keyStep || undefined,
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/time-entries/employee', user.id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/time-entries'] });
+      toast({ title: "Saved", description: "Task updated." });
+    } catch (error: any) {
+      let message = 'Failed to save. Please try again.';
+      try {
+        const raw = error?.message || '';
+        const parsed = JSON.parse(raw.substring(raw.indexOf('{')));
+        if (parsed?.error && typeof parsed.error === 'string') message = parsed.error;
+      } catch { }
+      toast({ title: "Error", description: message, variant: "destructive" });
+      throw error;
+    }
   };
 
   const handleEditTask = (task: Task) => {
@@ -1617,6 +1728,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
                 onDelete={handleDeleteTask}
                 onComplete={handleCompleteTask}
                 onResubmit={handleResubmitTask}
+                onQuickSave={handleQuickSaveTask}
               />
             ) : (
               <div className="flex flex-col items-center justify-center py-12 text-blue-200/40 bg-white/5 rounded-2xl border border-dashed border-blue-500/10">

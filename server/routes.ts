@@ -1124,11 +1124,16 @@ export async function registerRoutes(
     }
   });
 
-  // ============ PROJECTS ROUTES ============
   app.get("/api/projects", async (req, res) => {
     try {
-      const { userRole, userEmpCode, userDepartment } = req.query;
-      const projects = await storage.getProjects(userRole as string, userEmpCode as string, userDepartment as string);
+      const { userRole, userEmpCode, userDepartment, includeInactive } = req.query;
+      const { getProjects } = await import('./pmsSupabase');
+      const projects = await getProjects(
+        userRole as string,
+        userEmpCode as string,
+        userDepartment as string,
+        includeInactive === 'true'
+      );
       res.json(projects);
     } catch (error) {
       console.error("Get projects error:", error);
@@ -2423,7 +2428,25 @@ export async function registerRoutes(
         const invalidEntries = entries
           .filter(e => e.status === 'draft' || e.status === 'pending' || e.status === 'resubmitted')
           .filter(e => isWithinSubmissionWindow(date, nowForWindow, null))
-          .map(e => ({ entry: e, problems: validateWithRules(e, submitRules, "submit") }))
+          .map(e => {
+            const problems = validateWithRules(e, submitRules, "submit");
+            const rawPct = (e as any).percentageComplete ?? (e as any).percentage_complete;
+            const pct = typeof rawPct === "number" ? rawPct : rawPct === null || rawPct === undefined || rawPct === "" ? NaN : Number(rawPct);
+            if (!Number.isFinite(pct) || pct <= 0) {
+              problems.push("Completion percentage must be greater than 0%");
+            }
+            const hasContent = Boolean(
+              ((e as any).quantify && String((e as any).quantify).trim()) ||
+              ((e as any).achievements && String((e as any).achievements).trim()) ||
+              ((e as any).description && String((e as any).description).trim()) ||
+              ((e as any).problemAndIssues && String((e as any).problemAndIssues).trim()) ||
+              ((e as any).problem_and_issues && String((e as any).problem_and_issues).trim())
+            );
+            if (!hasContent) {
+              problems.push("Task details are empty (fill in Quantify, Achievements, or Description)");
+            }
+            return { entry: e, problems };
+          })
           .filter(x => x.problems.length > 0);
         if (invalidEntries.length > 0) {
           const detail = invalidEntries
@@ -3197,25 +3220,6 @@ export async function registerRoutes(
       return false;
     }
   }
-  app.get("/api/projects", async (req, res) => {
-    try {
-      const { userRole, userEmpCode, userDepartment } = req.query;
-      const { getProjects } = await import('./pmsSupabase');
-      const pmsProjects = await getProjects(userRole as string, userEmpCode as string, userDepartment as string);
-
-      // Add isExpired flag to each project
-      const projectsWithExpiry = pmsProjects.map(p => ({
-        ...p,
-        isExpired: isProjectExpired(p.end_date || null),
-      }));
-
-      res.json(projectsWithExpiry);
-    } catch (error) {
-      console.error("PMS projects error:", error);
-      res.status(500).json({ error: "Failed to fetch PMS projects" });
-    }
-  });
-
   app.get("/api/tasks", async (req, res) => {
     try {
       const { projectId, userDepartment, userEmpCode, userRole } = req.query;
@@ -3290,7 +3294,16 @@ export async function registerRoutes(
       const settings = await readSettings();
       const includeProjectTasks = !!settings.blockUnassignedProjectTasks;
 
+      const { isPMSProjectActive: isProjectActive } = await import('./pmsSupabase');
+      const pendingTodayKey = (() => {
+        const n = new Date();
+        const ist = new Date(n.getTime() + n.getTimezoneOffset() * 60000 + 5.5 * 3600000);
+        return ist.toISOString().split('T')[0];
+      })();
+
       for (const project of projects) {
+        // Completed / out-of-timeline projects must not raise "due today" warnings
+        if (!isProjectActive(project, pendingTodayKey)) continue;
         const tasks = await getTasks(project.project_code, userDept, employee.employeeCode);
         for (const t of tasks) {
           // determine assignee match
@@ -3847,10 +3860,16 @@ export async function registerRoutes(
         const todayKey = getISTTodayKey();
 
         // Fetch all project tasks in parallel instead of sequentially
+        // Only active projects can make a task mandatory (completed / out-of-timeline
+        // projects are hidden from the Plan page, so they must not block submission).
+        const { isPMSProjectActive: isActiveProject, isPMSTaskCompleted: isDoneTask } = await import('./pmsSupabase');
         const allProjectTasks = await Promise.all(
-          projects.map((project: any) =>
-            getTasks(project.project_code, userDept, employee.employeeCode, employee.role)
-          )
+          projects
+            .filter((project: any) => isActiveProject(project, todayKey))
+            .map(async (project: any) => {
+              const pts = await getTasks(project.project_code, userDept, employee.employeeCode, employee.role);
+              return pts.filter((t: any) => !isDoneTask(t));
+            })
         );
         for (const projectTasks of allProjectTasks) {
           const mandatoryTasks = projectTasks.filter((t: any) => shouldSyncPMSTask(t, todayKey));
@@ -4507,9 +4526,15 @@ export async function registerRoutes(
       const { getSubtasksForTaskIds } = await import('./pmsSupabase');
       const subtasksByTaskId = await getSubtasksForTaskIds(allProjectTasks.map((t: any) => t.id));
 
+      const { isPMSProjectActive, isPMSTaskCompleted, isPMSTaskActive } = await import('./pmsSupabase');
+
       for (const task of allProjectTasks) {
         const project = task.project;
         if (!project) continue;
+
+        // Tracker and Plan show only active work: skip completed tasks, completed projects,
+        // and tasks/projects whose timeline has lapsed (overdue / inactive).
+        if (isPMSTaskCompleted(task) || !isPMSProjectActive(project, todayKey) || !isPMSTaskActive(task, todayKey)) continue;
 
         const projectKey = extractDatePart(project.end_date);
         const isProjectOverdue = projectKey ? projectKey < todayKey : false;

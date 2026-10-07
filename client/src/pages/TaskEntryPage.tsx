@@ -63,10 +63,11 @@ const parseDuration = (duration: string): number => {
   return 0;
 };
 
-export default function TaskEntryPage() {
+export default function TaskEntryPage({ user: propUser }: { user?: any } = {}) {
   const { id } = useParams();
   const [, setLocation] = useLocation();
-  const { user } = useAuth();
+  const { user: authUser } = useAuth();
+  const user = propUser || authUser;
   const { toast } = useToast();
 
   // Get date from URL or use today

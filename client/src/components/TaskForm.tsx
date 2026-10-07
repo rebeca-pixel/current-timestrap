@@ -84,8 +84,20 @@ type Project = {
   project_name: string;
 };
 
+// Employees only need Project, Key Step, Task, Sub Task, Quantify, Progress and Tools to fill a
+// timesheet quickly. Achievements, Problems & Issues, Scope of Improvements and Description are
+// hidden (not removed): set this to true to always show them. A hidden field is still shown automatically
+// when the admin validation rules make it mandatory. Existing values are always preserved on save.
+const SHOW_OPTIONAL_FIELDS = false;
+
 export default function TaskForm({ task, onSave, onCancel, user, saveButtonText, date }: TaskFormProps) {
   const { rules: validationRules } = useValidationRules();
+  // Hidden fields still appear automatically when the admin rules make them mandatory for submit,
+  // so employees are never blocked by a field they can't see.
+  const showAchievementsField = !!validationRules?.achievements?.submit;
+  const showProblemsField = !!validationRules?.problemAndIssues?.submit || (showAchievementsField && !!validationRules?.achievements?.allowProblemsInstead);
+  const showDescriptionField = !!validationRules?.description?.submit;
+  const showScopeField = !!validationRules?.scopeOfImprovements?.submit;
   const { user: authUser } = useAuth();
   const [formData, setFormData] = useState<Task>({
     project: task?.project || '',
@@ -162,15 +174,27 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
     return () => clearInterval(interval);
   }, [isRecording, recordingStartTime]);
 
-  /* ✅ UPDATED – SAFE FETCH */
+  /* ✅ UPDATED – SAFE FETCH with strict employee filtering */
   useEffect(() => {
+    // Wait until we have user identity before fetching — avoids a race-condition
+    // where the component mounts before auth resolves, sending empty params and
+    // getting back an unfiltered or empty project list.
+    const effectiveEmpCode = user?.employeeCode || (authUser as any)?.employeeCode;
+    const effectiveRole = user?.role || authUser?.role;
+    const effectiveDept = authUser?.department || user?.department;
+
+    if (!effectiveEmpCode && !effectiveDept) return; // auth not ready yet
+
     async function fetchProjects() {
       try {
         const params = new URLSearchParams();
-        if (user?.role) params.append('userRole', user.role);
-        if (user?.employeeCode) params.append('userEmpCode', user.employeeCode);
-        if (authUser?.department) params.append('userDepartment', authUser.department);
-        const url = `/api/projects${params.toString() ? '?' + params.toString() : ''}`;
+        // Always send all identity params so the server can apply strict
+        // per-employee filtering regardless of which fields are populated.
+        if (effectiveRole) params.append('userRole', effectiveRole);
+        if (effectiveEmpCode) params.append('userEmpCode', effectiveEmpCode);
+        if (effectiveDept) params.append('userDepartment', effectiveDept);
+
+        const url = `/api/projects?${params.toString()}`;
         const res = await fetch(url);
         const json = await res.json();
 
@@ -187,7 +211,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
       }
     }
     fetchProjects();
-  }, [user]);
+  }, [user, authUser]);
 
   // Fetch postponements for PMS-backed tasks (if pmsId provided)
   useEffect(() => {
@@ -870,6 +894,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
     if (subtasks.length > 0 && !formData.subTask) {
       errs.push('Sub Task selection is mandatory for this task');
     }
+    if (!(Number(formData.percentageComplete) > 0)) errs.push('Progress (Completion %) is required');
     if (!formData.startTime) errs.push('Start time is required');
     if (!formData.endTime) errs.push('End time is required');
     // Mandatory-field rules configured by the Admin (same ones the server enforces)
@@ -1070,7 +1095,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
               aggregated={aggregatedWorkedTools}
             />
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-3">
               {errors.length > 0 && (
                 <div className="p-3 rounded-md bg-red-500/10 border border-red-500/20">
                   {errors.map((error, i) => (
@@ -1079,8 +1104,83 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                 </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="space-y-1 w-36">
+                  <Label htmlFor="startTime" className="text-blue-100 tracker-form-label">Start Time (IST) *</Label>
+                  <div className="relative time-input-wrapper">
+                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400 task-form-time-icon" />
+                    <Input
+                      id="startTime"
+                      type="time"
+                      value={formData.startTime}
+                      onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                      className="pl-10 tracker-form-input"
+                      data-testid="input-start-time"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1 w-36">
+                  <Label htmlFor="endTime" className="text-blue-100 tracker-form-label">End Time (IST) *</Label>
+                  <div className="relative time-input-wrapper">
+                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400 task-form-time-icon" />
+                    <Input
+                      id="endTime"
+                      type="time"
+                      value={formData.endTime}
+                      onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                      className="pl-10 tracker-form-input"
+                      data-testid="input-end-time"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1 w-40">
+                  <Label htmlFor="percentage" className="text-blue-100 tracker-form-label">Completion % *</Label>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setFormData({ ...formData, percentageComplete: Math.max(0, formData.percentageComplete - 10) })}
+                      className="bg-slate-700/50 border-blue-500/20 text-white hover:bg-slate-600/50 tracker-form-input"
+                      data-testid="btn-decrease-percentage"
+                    >
+                      -
+                    </Button>
+                    <Input
+                      id="percentage"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={formData.percentageComplete}
+                      onChange={(e) => {
+                        const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+                        setFormData({ ...formData, percentageComplete: val });
+                        if (val === 100) {
+                          playSound('hurray');
+                          // window.dispatchEvent(new CustomEvent('mascot:doll', { detail: { text: "Hurray! 100%!", x: 50, y: 20 } }));
+                        }
+                      }}
+                      className="text-center px-1 min-w-0 tracker-form-input"
+                      data-testid="input-percentage"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setFormData({ ...formData, percentageComplete: Math.min(100, formData.percentageComplete + 10) })}
+                      className="bg-slate-700/50 border-blue-500/20 text-white hover:bg-slate-600/50 tracker-form-input"
+                      data-testid="btn-increase-percentage"
+                    >
+                      +
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
                   <Label htmlFor="project" className="text-blue-100 tracker-form-label">Project *</Label>
                   <Select
                     value={formData.project}
@@ -1125,7 +1225,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                   </Select>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <Label htmlFor="keyStep" className="text-blue-100 tracker-form-label">Key Step</Label>
                   <Select
                     value={(formData as any).keyStep || ''}
@@ -1158,10 +1258,8 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                 </div>
               </div>
 
-              <hr className="tracker-form-divider" />
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="title" className="text-blue-100 tracker-form-label">Task *</Label>
                     <button
@@ -1185,7 +1283,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                       } catch { }
                     }}
                   >
-                    <SelectTrigger className="tracker-form-input" data-testid="select-task">
+                    <SelectTrigger className="tracker-form-input [&>span]:truncate" data-testid="select-task">
                       <SelectValue placeholder="Select a task" />
                     </SelectTrigger>
                     <SelectContent className="max-h-[200px] tracker-select-content">
@@ -1194,7 +1292,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                         sortedTasks.map(task => {
                           const isPlanned = dailyPlan?.tasks?.some((pt: any) => pt.taskId === task.id);
                           return (
-                            <SelectItem key={task.id} value={task.task_name} className="flex items-center justify-between gap-4">
+                            <SelectItem key={task.id} value={task.task_name} className="flex items-center justify-between gap-3">
                               <div className="flex items-center gap-2">
                                 {task.task_name}
                                 {isPlanned && (
@@ -1215,7 +1313,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                   </Select>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <Label htmlFor="subTask" className="text-blue-100 tracker-form-label">
                     Sub Task {subtasks.length > 0 && <span className="text-red-400">*</span>}
                   </Label>
@@ -1259,10 +1357,8 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                 </div>
               </div>
 
-              <hr className="tracker-form-divider" />
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1 md:col-span-2">
                   <Label htmlFor="quantify" className="text-blue-100 tracker-form-label">Quantify Your Result *</Label>
                   <Input
                     id="quantify"
@@ -1291,183 +1387,112 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="achievements" className="text-blue-100 tracker-form-label">Achievements</Label>
-                  <Input
-                    id="achievements"
-                    placeholder="What did you accomplish? (min 10 words; or fill Problems & Issues)"
-                    value={formData.achievements}
-                    onChange={(e) => setFormData({ ...formData, achievements: e.target.value })}
-                    onFocus={(e) => {
-                      try {
-                        playSound('confirm');
-                        speak('Hey! Tell me what you achieved today.');
-                        const el = (e.target || e.currentTarget) as HTMLElement | null;
-                        const rect = el ? el.getBoundingClientRect() : null;
-                        if (rect && Math.random() < 0.5) {
-                          // pass a plain object with the rect numbers to avoid cross-origin serialization issues
-                          const detail = { text: 'Tell me, what did you achieve?', rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } };
-                          console.debug('[TaskForm] dispatching mascot:showNear', detail);
-                          window.dispatchEvent(new CustomEvent('mascot:showNear', { detail }));
-                        }
-                      } catch { }
-                    }}
-                    onBlur={() => { try { if (formData.achievements && formData.achievements.trim().length > 0) { playSound('wow'); speak('Wow, really great! Keep it up.'); popEmoji(document.querySelector('[data-testid="input-achievements"]') as HTMLElement, '🎉'); } } catch { } }}
-                    className="tracker-form-input"
-                    data-testid="input-achievements"
-                  />
-                </div>
+                {(SHOW_OPTIONAL_FIELDS || showAchievementsField) && (
+                  <div className="space-y-1">
+                    <Label htmlFor="achievements" className="text-blue-100 tracker-form-label">Achievements</Label>
+                    <Input
+                      id="achievements"
+                      placeholder="What did you accomplish? (min 10 words; or fill Problems & Issues)"
+                      value={formData.achievements}
+                      onChange={(e) => setFormData({ ...formData, achievements: e.target.value })}
+                      onFocus={(e) => {
+                        try {
+                          playSound('confirm');
+                          speak('Hey! Tell me what you achieved today.');
+                          const el = (e.target || e.currentTarget) as HTMLElement | null;
+                          const rect = el ? el.getBoundingClientRect() : null;
+                          if (rect && Math.random() < 0.5) {
+                            // pass a plain object with the rect numbers to avoid cross-origin serialization issues
+                            const detail = { text: 'Tell me, what did you achieve?', rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } };
+                            console.debug('[TaskForm] dispatching mascot:showNear', detail);
+                            window.dispatchEvent(new CustomEvent('mascot:showNear', { detail }));
+                          }
+                        } catch { }
+                      }}
+                      onBlur={() => { try { if (formData.achievements && formData.achievements.trim().length > 0) { playSound('wow'); speak('Wow, really great! Keep it up.'); popEmoji(document.querySelector('[data-testid="input-achievements"]') as HTMLElement, '🎉'); } } catch { } }}
+                      className="tracker-form-input"
+                      data-testid="input-achievements"
+                    />
+                  </div>
+                )}
 
               </div>
 
-              <hr className="tracker-form-divider" />
+              {(SHOW_OPTIONAL_FIELDS || showProblemsField || showScopeField) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {(SHOW_OPTIONAL_FIELDS || showProblemsField) && (
+                    <div className="space-y-1">
+                      <Label htmlFor="problemAndIssues" className="text-blue-100 tracker-form-label">Problems & Issues</Label>
+                      <Input
+                        id="problemAndIssues"
+                        placeholder="Enter any problems or issues faced"
+                        value={formData.problemAndIssues}
+                        onChange={(e) => setFormData({ ...formData, problemAndIssues: e.target.value })}
+                        onFocus={(e) => { try { playSound('select', 2); if (Math.random() < 0.4) { speak('Any blockers? Tell me the problem.'); const el = (e.target || e.currentTarget) as HTMLElement | null; if (el) { const r = el.getBoundingClientRect(); window.dispatchEvent(new CustomEvent('mascot:showNear', { detail: { text: 'Any blockers? Tell me the problem.', rect: { left: r.left, top: r.top, width: r.width, height: r.height } } })); } } } catch { } }}
+                        onBlur={() => { try { if (formData.problemAndIssues && formData.problemAndIssues.trim().length > 0) { playSound('confirm'); speak('Thanks for noting that — you are thorough.'); } } catch { } }}
+                        className="tracker-form-input"
+                        data-testid="input-problem-issues"
+                      />
+                    </div>
+                  )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="problemAndIssues" className="text-blue-100 tracker-form-label">Problems & Issues</Label>
-                  <Input
-                    id="problemAndIssues"
-                    placeholder="Enter any problems or issues faced"
-                    value={formData.problemAndIssues}
-                    onChange={(e) => setFormData({ ...formData, problemAndIssues: e.target.value })}
-                    onFocus={(e) => { try { playSound('select', 2); if (Math.random() < 0.4) { speak('Any blockers? Tell me the problem.'); const el = (e.target || e.currentTarget) as HTMLElement | null; if (el) { const r = el.getBoundingClientRect(); window.dispatchEvent(new CustomEvent('mascot:showNear', { detail: { text: 'Any blockers? Tell me the problem.', rect: { left: r.left, top: r.top, width: r.width, height: r.height } } })); } } } catch { } }}
-                    onBlur={() => { try { if (formData.problemAndIssues && formData.problemAndIssues.trim().length > 0) { playSound('confirm'); speak('Thanks for noting that — you are thorough.'); } } catch { } }}
-                    className="tracker-form-input"
-                    data-testid="input-problem-issues"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="scopeOfImprovements" className="text-blue-100 tracker-form-label">Scope of Improvements</Label>
-                  <Input
-                    id="scopeOfImprovements"
-                    placeholder="Areas for improvement"
-                    value={formData.scopeOfImprovements}
-                    onChange={(e) => setFormData({ ...formData, scopeOfImprovements: e.target.value })}
-                    onFocus={(e) => { try { playSound('select', 3); if (Math.random() < 0.4) { speak('How can this get even better?'); const el = (e.target || e.currentTarget) as HTMLElement | null; if (el) { const r = el.getBoundingClientRect(); window.dispatchEvent(new CustomEvent('mascot:showNear', { detail: { text: 'How can this get even better?', rect: { left: r.left, top: r.top, width: r.width, height: r.height } } })); } } } catch { } }}
-                    onBlur={() => { try { if (formData.scopeOfImprovements && formData.scopeOfImprovements.trim().length > 0) { playSound('confirm'); speak('Great improvement idea — small steps make a difference.'); } } catch { } }}
-                    className="tracker-form-input"
-                    data-testid="input-scope-improvements"
-                  />
-                </div>
-              </div>
-
-              <hr className="tracker-form-divider" />
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="description" className="text-blue-100 tracker-form-label">
-                    Description <span className="text-blue-400/60 text-xs">(optional, min 10 words)</span>
-                  </Label>
-                  {timeguardSuggestionsEnabled && (
-                    <button
-                      type="button"
-                      onClick={handleSuggestWorkSummary}
-                      disabled={isSuggestingDescription}
-                      className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                      data-testid="button-suggest-description"
-                      title="Fills Description, Achievements, and Quantify Your Result from TimeGuard's tracked activity"
-                    >
-                      {isSuggestingDescription ? 'Analyzing TimeGuard activity…' : '✨ Suggest from TimeGuard'}
-                    </button>
+                  {(SHOW_OPTIONAL_FIELDS || showScopeField) && (
+                    <div className="space-y-1">
+                      <Label htmlFor="scopeOfImprovements" className="text-blue-100 tracker-form-label">Scope of Improvements</Label>
+                      <Input
+                        id="scopeOfImprovements"
+                        placeholder="Areas for improvement"
+                        value={formData.scopeOfImprovements}
+                        onChange={(e) => setFormData({ ...formData, scopeOfImprovements: e.target.value })}
+                        onFocus={(e) => { try { playSound('select', 3); if (Math.random() < 0.4) { speak('How can this get even better?'); const el = (e.target || e.currentTarget) as HTMLElement | null; if (el) { const r = el.getBoundingClientRect(); window.dispatchEvent(new CustomEvent('mascot:showNear', { detail: { text: 'How can this get even better?', rect: { left: r.left, top: r.top, width: r.width, height: r.height } } })); } } } catch { } }}
+                        onBlur={() => { try { if (formData.scopeOfImprovements && formData.scopeOfImprovements.trim().length > 0) { playSound('confirm'); speak('Great improvement idea — small steps make a difference.'); } } catch { } }}
+                        className="tracker-form-input"
+                        data-testid="input-scope-improvements"
+                      />
+                    </div>
                   )}
                 </div>
-                <Textarea
-                  id="description"
-                  placeholder="Describe the task (optional, min 10 words)..."
-                  value={formData.description}
-                  onChange={(e) => {
-                    setFormData({ ...formData, description: e.target.value });
-                  }}
-                  className="tracker-form-input resize-none"
-                  rows={3}
-                  data-testid="input-description"
-                />
-                <p className="text-xs text-blue-400/60">
-                  {formData.description.trim().split(/\s+/).filter(w => w.length > 0).length}/10 words (minimum)
-                </p>
-              </div>
+              )}
 
-              <hr className="tracker-form-divider" />
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="startTime" className="text-blue-100 tracker-form-label">Start Time (IST) *</Label>
-                  <div className="relative time-input-wrapper">
-                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400 task-form-time-icon" />
-                    <Input
-                      id="startTime"
-                      type="time"
-                      value={formData.startTime}
-                      onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                      className="pl-10 tracker-form-input"
-                      data-testid="input-start-time"
-                    />
+              {(SHOW_OPTIONAL_FIELDS || showDescriptionField) && (<>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="description" className="text-blue-100 tracker-form-label">
+                      Description <span className="text-blue-400/60 text-xs">(optional, min 10 words)</span>
+                    </Label>
+                    {timeguardSuggestionsEnabled && (
+                      <button
+                        type="button"
+                        onClick={handleSuggestWorkSummary}
+                        disabled={isSuggestingDescription}
+                        className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                        data-testid="button-suggest-description"
+                        title="Fills Description, Achievements, and Quantify Your Result from TimeGuard's tracked activity"
+                      >
+                        {isSuggestingDescription ? 'Analyzing TimeGuard activity…' : '✨ Suggest from TimeGuard'}
+                      </button>
+                    )}
                   </div>
+                  <Textarea
+                    id="description"
+                    placeholder="Describe the task (optional, min 10 words)..."
+                    value={formData.description}
+                    onChange={(e) => {
+                      setFormData({ ...formData, description: e.target.value });
+                    }}
+                    className="tracker-form-input resize-none"
+                    rows={3}
+                    data-testid="input-description"
+                  />
+                  <p className="text-xs text-blue-400/60">
+                    {formData.description.trim().split(/\s+/).filter(w => w.length > 0).length}/10 words (minimum)
+                  </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="endTime" className="text-blue-100 tracker-form-label">End Time (IST) *</Label>
-                  <div className="relative time-input-wrapper">
-                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400 task-form-time-icon" />
-                    <Input
-                      id="endTime"
-                      type="time"
-                      value={formData.endTime}
-                      onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                      className="pl-10 tracker-form-input"
-                      data-testid="input-end-time"
-                    />
-                  </div>
-                </div>
+                <hr className="tracker-form-divider" />
+              </>)}
 
-                <div className="space-y-2">
-                  <Label htmlFor="percentage" className="text-blue-100 tracker-form-label">Completion % *</Label>
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setFormData({ ...formData, percentageComplete: Math.max(0, formData.percentageComplete - 10) })}
-                      className="bg-slate-700/50 border-blue-500/20 text-white hover:bg-slate-600/50 tracker-form-input"
-                      data-testid="btn-decrease-percentage"
-                    >
-                      -
-                    </Button>
-                    <Input
-                      id="percentage"
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={formData.percentageComplete}
-                      onChange={(e) => {
-                        const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
-                        setFormData({ ...formData, percentageComplete: val });
-                        if (val === 100) {
-                          playSound('hurray');
-                          // window.dispatchEvent(new CustomEvent('mascot:doll', { detail: { text: "Hurray! 100%!", x: 50, y: 20 } }));
-                        }
-                      }}
-                      className="text-center tracker-form-input"
-                      data-testid="input-percentage"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setFormData({ ...formData, percentageComplete: Math.min(100, formData.percentageComplete + 10) })}
-                      className="bg-slate-700/50 border-blue-500/20 text-white hover:bg-slate-600/50 tracker-form-input"
-                      data-testid="btn-increase-percentage"
-                    >
-                      +
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              <hr className="tracker-form-divider" />
-
-              <div className="space-y-2">
+              <div className="space-y-1">
                 <Label className="text-blue-100 tracker-form-label">Tools Used</Label>
                 <Command className="bg-slate-700/30 border border-blue-500/10 rounded-md tracker-tools-command">
                   <CommandInput
@@ -1477,7 +1502,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                     className="bg-transparent border-none text-white placeholder:text-slate-400"
                     data-testid="input-tool-search"
                   />
-                  <CommandList className="max-h-40">
+                  <CommandList className="max-h-32">
                     <CommandEmpty className="text-slate-400 p-2">No tools found.</CommandEmpty>
                     <CommandGroup>
                       {TOOLS_LIST.filter(tool =>
@@ -1486,7 +1511,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                         <CommandItem
                           key={tool}
                           onSelect={() => { toggleTool(tool); setToolSearch(''); }}
-                          className={`cursor-pointer ${formData.toolsUsed.includes(tool)
+                          className={`cursor-pointer py-1 text-xs ${formData.toolsUsed.includes(tool)
                             ? 'bg-blue-500/20 text-blue-300'
                             : 'text-slate-300 hover:bg-slate-600/50'
                             }`}
@@ -1500,7 +1525,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                   </CommandList>
                 </Command>
                 {formData.toolsUsed.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
+                  <div className="flex flex-wrap gap-1.5 mt-1">
                     {formData.toolsUsed.map(tool => (
                       <Badge
                         key={tool}
@@ -1517,9 +1542,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                 )}
               </div>
 
-              <hr className="tracker-form-divider" />
-
-              <div className="flex justify-end gap-3 pt-4">
+              <div className="flex justify-end gap-3 pt-1">
                 <Button
                   type="button"
                   variant="outline"

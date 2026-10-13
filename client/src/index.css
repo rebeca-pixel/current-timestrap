@@ -1113,6 +1113,25 @@ html:not([style*="invert"]) .tracker-inner-stat-card {
   min-width: 0 !important;
 }
 
+html:not([style*="invert"]) .tracker-top-container .tracker-inner-stat-card,
+html[style*="invert"] .tracker-top-container .tracker-inner-stat-card {
+  box-sizing: border-box !important;
+  height: 88px !important;
+  min-height: 88px !important;
+  max-height: 88px !important;
+  padding: 5px 10px !important;
+  overflow: hidden !important;
+}
+
+html:not([style*="invert"]) .tracker-top-container .card-submit [data-testid="text-submit-blocked-reason"],
+html[style*="invert"] .tracker-top-container .card-submit [data-testid="text-submit-blocked-reason"] {
+  display: -webkit-box !important;
+  overflow: hidden !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+  line-height: 1.15 !important;
+}
+
 html:not([style*="invert"]) .tracker-inner-stat-card:hover {
   border-color: rgba(255, 255, 255, 0.35) !important;
   box-shadow:
@@ -2779,6 +2798,18 @@ html:not([style*="invert"]) .available-tasks-scroll-container {
 
   /* Tracker page (everything under the header) */
   [data-testid="tracker-page"] {
+    zoom: var(--app-scale);
+  }
+
+  /* Match the Tracker's compact desktop scale on the task-entry editor. */
+  [data-testid="task-entry-page"] {
+    zoom: var(--app-scale);
+  }
+
+  /* Portal menus do not inherit the compact scale applied to their page. */
+  .task-entry-select-content,
+  .tracker-quickfill-select-content,
+  .tracker-portal-menu {
     zoom: var(--app-scale);
   }
 }

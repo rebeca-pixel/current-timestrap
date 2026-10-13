@@ -127,7 +127,7 @@ export default function ShiftSelector({
           )}
         </Button>
         {!isLocked && !canSubmit && disabledReason && (
-          <p className="text-[11px] text-amber-300/90 text-center leading-snug" data-testid="text-submit-blocked-reason">
+          <p className="text-[11px] text-amber-300/90 text-center leading-snug" title={disabledReason} data-testid="text-submit-blocked-reason">
             {disabledReason}
           </p>
         )}

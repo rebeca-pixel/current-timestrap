@@ -6,7 +6,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Play, Square, Save, Clock, X, Check, Plus, Search, ChevronDown } from 'lucide-react';
@@ -76,6 +75,7 @@ interface TaskFormProps {
   user?: { role: string; employeeCode: string; department?: string };
   saveButtonText?: string;
   date?: string;
+  compactSelectMenus?: boolean;
 }
 
 /* ✅ NEW – project type (does NOT remove anything) */
@@ -89,9 +89,25 @@ type Project = {
 // hidden (not removed): set this to true to always show them. A hidden field is still shown automatically
 // when the admin validation rules make it mandatory. Existing values are always preserved on save.
 const SHOW_OPTIONAL_FIELDS = false;
+const MAX_ENTRY_DURATION_MINUTES = 4 * 60;
+const timeToMinutes = (time: string) => {
+  const [hours, minutes] = time.split(':').map(Number);
+  return hours * 60 + minutes;
+};
+const getFourHourEndTime = (startTime: string) => {
+  if (!/^\d{2}:\d{2}$/.test(startTime)) return '';
+  const maxMinutes = Math.min(23 * 60 + 59, timeToMinutes(startTime) + MAX_ENTRY_DURATION_MINUTES);
+  return `${String(Math.floor(maxMinutes / 60)).padStart(2, '0')}:${String(maxMinutes % 60).padStart(2, '0')}`;
+};
+const exceedsFourHourEntry = (startTime: string, endTime: string) => (
+  /^\d{2}:\d{2}$/.test(startTime)
+  && /^\d{2}:\d{2}$/.test(endTime)
+  && timeToMinutes(endTime) - timeToMinutes(startTime) > MAX_ENTRY_DURATION_MINUTES
+);
 
-export default function TaskForm({ task, onSave, onCancel, user, saveButtonText, date }: TaskFormProps) {
+export default function TaskForm({ task, onSave, onCancel, user, saveButtonText, date, compactSelectMenus }: TaskFormProps) {
   const { rules: validationRules } = useValidationRules();
+  const selectMenuScaleClass = compactSelectMenus ? 'task-entry-select-content' : '';
   // Hidden fields still appear automatically when the admin rules make them mandatory for submit,
   // so employees are never blocked by a field they can't see.
   const showAchievementsField = !!validationRules?.achievements?.submit;
@@ -112,7 +128,9 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
     toolsUsed: task?.toolsUsed || [],
     actualWorkTool: (task as any)?.actualWorkTool || '',
     startTime: task?.startTime || '',
-    endTime: task?.endTime || '',
+    endTime: task?.startTime && task?.endTime && exceedsFourHourEntry(task.startTime, task.endTime)
+      ? getFourHourEndTime(task.startTime)
+      : task?.endTime || '',
     percentageComplete: task?.percentageComplete || 0,
     pmsId: task?.pmsId,
     pmsSubtaskId: (task as any)?.pmsSubtaskId,
@@ -125,6 +143,11 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
   const [elapsedTime, setElapsedTime] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [timeAdjustment, setTimeAdjustment] = useState<string | null>(() => (
+    task?.startTime && task?.endTime && exceedsFourHourEntry(task.startTime, task.endTime)
+      ? `End time adjusted to ${getFourHourEndTime(task.startTime)}; one entry can be at most 4 hours.`
+      : null
+  ));
   const [projectSearch, setProjectSearch] = useState('');
   const [toolSearch, setToolSearch] = useState('');
   const [postponements, setPostponements] = useState<Array<any>>([]);
@@ -897,6 +920,15 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
     if (!(Number(formData.percentageComplete) > 0)) errs.push('Progress (Completion %) is required');
     if (!formData.startTime) errs.push('Start time is required');
     if (!formData.endTime) errs.push('End time is required');
+    if (formData.startTime && formData.endTime) {
+      const [startHour, startMinute] = formData.startTime.split(':').map(Number);
+      const [endHour, endMinute] = formData.endTime.split(':').map(Number);
+      const elapsedMinutes = endHour * 60 + endMinute - (startHour * 60 + startMinute);
+      const durationMinutes = elapsedMinutes < 0 ? elapsedMinutes + 24 * 60 : elapsedMinutes;
+      if (durationMinutes > MAX_ENTRY_DURATION_MINUTES) {
+        errs.push('A single time entry cannot exceed 4 hours. Split longer work into separate entries.');
+      }
+    }
     // Mandatory-field rules configured by the Admin (same ones the server enforces)
     errs.push(...validateWithRules(formData, validationRules, 'submit'));
     setErrors(errs);
@@ -1095,7 +1127,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
               aggregated={aggregatedWorkedTools}
             />
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-3">
+            <form onSubmit={handleSubmit} className="space-y-2">
               {errors.length > 0 && (
                 <div className="p-3 rounded-md bg-red-500/10 border border-red-500/20">
                   {errors.map((error, i) => (
@@ -1104,8 +1136,8 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                 </div>
               )}
 
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="space-y-1 w-36">
+              <div className="grid grid-cols-2 lg:grid-cols-[9rem_9rem_10rem] items-end gap-2">
+                <div className="min-w-0 space-y-1">
                   <Label htmlFor="startTime" className="text-blue-100 tracker-form-label">Start Time (IST) *</Label>
                   <div className="relative time-input-wrapper">
                     <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400 task-form-time-icon" />
@@ -1113,29 +1145,62 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                       id="startTime"
                       type="time"
                       value={formData.startTime}
-                      onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                      onChange={(e) => {
+                        const startTime = e.target.value;
+                        const maxEndTime = getFourHourEndTime(startTime);
+                        const shouldAdjustEnd = !!formData.endTime && !!maxEndTime && formData.endTime > maxEndTime;
+                        setFormData({ ...formData, startTime });
+                        setTimeAdjustment(shouldAdjustEnd
+                          ? `End time will be adjusted to ${maxEndTime}; one entry can be at most 4 hours.`
+                          : null);
+                      }}
+                      onBlur={(e) => {
+                        const startTime = e.currentTarget.value;
+                        const maxEndTime = getFourHourEndTime(startTime);
+                        if (maxEndTime && formData.endTime > maxEndTime) {
+                          setFormData(prev => ({ ...prev, startTime, endTime: maxEndTime }));
+                          setTimeAdjustment(`End time adjusted to ${maxEndTime}; one entry can be at most 4 hours.`);
+                        }
+                      }}
                       className="pl-10 tracker-form-input"
                       data-testid="input-start-time"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-1 w-36">
-                  <Label htmlFor="endTime" className="text-blue-100 tracker-form-label">End Time (IST) *</Label>
+                <div className="min-w-0 space-y-1">
+                  <Label htmlFor="endTime" className="block text-blue-100 tracker-form-label">
+                    End Time (IST) *
+                    <span className="block text-[10px] leading-3 text-blue-300/70">Max 4 hours per entry</span>
+                  </Label>
                   <div className="relative time-input-wrapper">
                     <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400 task-form-time-icon" />
                     <Input
                       id="endTime"
                       type="time"
                       value={formData.endTime}
-                      onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                      onChange={(e) => {
+                        const endTime = e.target.value;
+                        const maxEndTime = getFourHourEndTime(formData.startTime);
+                        setFormData({ ...formData, endTime });
+                        setTimeAdjustment(maxEndTime && endTime > maxEndTime
+                          ? `End time will be adjusted to ${maxEndTime}; one entry can be at most 4 hours.`
+                          : null);
+                      }}
+                      onBlur={(e) => {
+                        const maxEndTime = getFourHourEndTime(formData.startTime);
+                        if (maxEndTime && e.currentTarget.value > maxEndTime) {
+                          setFormData(prev => ({ ...prev, endTime: maxEndTime }));
+                          setTimeAdjustment(`End time adjusted to ${maxEndTime}; one entry can be at most 4 hours.`);
+                        }
+                      }}
                       className="pl-10 tracker-form-input"
                       data-testid="input-end-time"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-1 w-40">
+                <div className="min-w-0 space-y-1">
                   <Label htmlFor="percentage" className="text-blue-100 tracker-form-label">Completion % *</Label>
                   <div className="flex items-center space-x-2">
                     <Button
@@ -1178,6 +1243,9 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                   </div>
                 </div>
               </div>
+              {timeAdjustment && (
+                <p className="text-xs text-amber-300" role="status">{timeAdjustment}</p>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">
@@ -1198,7 +1266,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                     <SelectTrigger className="tracker-form-input" data-testid="select-project" data-radix-select-trigger>
                       <SelectValue placeholder="Select a project" />
                     </SelectTrigger>
-                    <SelectContent className="max-h-[300px] tracker-select-content">
+                    <SelectContent searchable={false} className={`max-h-[300px] tracker-select-content ${selectMenuScaleClass}`}>
                       <div className="flex items-center px-3 pb-2 pt-1 border-b border-blue-500/10">
                         <Search className="w-3.5 h-3.5 text-blue-400/50 mr-2" />
                         <input
@@ -1242,7 +1310,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                     <SelectTrigger className="tracker-form-input" data-testid="select-keystep" data-radix-select-trigger>
                       <SelectValue placeholder="Select key step" />
                     </SelectTrigger>
-                    <SelectContent className="max-h-[300px] tracker-select-content">
+                    <SelectContent className={`max-h-[300px] tracker-select-content ${selectMenuScaleClass}`}>
                       {/* Ensure prefilled key step is visible even if not in fetched list */}
                       {formData.keyStep && !keySteps.find(k => k.name === formData.keyStep) && (
                         <SelectItem value={formData.keyStep}>{formData.keyStep}</SelectItem>
@@ -1286,7 +1354,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                     <SelectTrigger className="tracker-form-input [&>span]:truncate" data-testid="select-task">
                       <SelectValue placeholder="Select a task" />
                     </SelectTrigger>
-                    <SelectContent className="max-h-[200px] tracker-select-content">
+                    <SelectContent className={`max-h-[200px] tracker-select-content ${selectMenuScaleClass}`}>
                       {/* Ensure prefilled task is visible even if not in fetched list */}
                       {sortedTasks.length > 0 ? (
                         sortedTasks.map(task => {
@@ -1338,7 +1406,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                     <SelectTrigger className="tracker-form-input">
                       <SelectValue placeholder="Select a sub task" />
                     </SelectTrigger>
-                    <SelectContent className="bg-slate-800 border-blue-500/20 tracker-select-content">
+                    <SelectContent className={`bg-slate-800 border-blue-500/20 tracker-select-content ${selectMenuScaleClass}`}>
                       {/* Ensure prefilled subtask is visible even if not in fetched list */}
                       {formData.subTask && !subtasks.find(s => s.title === formData.subTask) && (
                         <SelectItem value={formData.subTask}>{formData.subTask}</SelectItem>
@@ -1357,8 +1425,8 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1 md:col-span-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div className="space-y-1">
                   <Label htmlFor="quantify" className="text-blue-100 tracker-form-label">Quantify Your Result *</Label>
                   <Input
                     id="quantify"
@@ -1385,6 +1453,62 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                     className="tracker-form-input"
                     data-testid="input-quantify"
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-blue-100 tracker-form-label">Tools Used</Label>
+                  <div className="overflow-hidden rounded-md border border-blue-500/10 bg-slate-700/30">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        placeholder="Search tools..."
+                        value={toolSearch}
+                        onChange={(e) => setToolSearch(e.target.value)}
+                        className="h-9 border-0 bg-transparent pl-9 text-white placeholder:text-slate-400 focus-visible:ring-0"
+                        data-testid="input-tool-search"
+                      />
+                    </div>
+                    <div className="max-h-28 overflow-y-auto border-t border-blue-500/10 p-1">
+                      {TOOLS_LIST.filter(tool =>
+                        tool.toLowerCase().includes(toolSearch.trim().toLowerCase())
+                      ).map(tool => (
+                        <button
+                          type="button"
+                          key={tool}
+                          onClick={() => toggleTool(tool)}
+                          className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs ${formData.toolsUsed.includes(tool)
+                            ? 'bg-blue-500/20 text-blue-300'
+                            : 'text-slate-300 hover:bg-slate-600/50'
+                            }`}
+                          data-testid={`command-tool-${tool.toLowerCase().replace(/\s+/g, '-')}`}
+                        >
+                          <Check className={`h-4 w-4 shrink-0 ${formData.toolsUsed.includes(tool) ? 'opacity-100' : 'opacity-0'}`} />
+                          <span className="truncate">{tool}</span>
+                        </button>
+                      ))}
+                      {TOOLS_LIST.filter(tool =>
+                        tool.toLowerCase().includes(toolSearch.trim().toLowerCase())
+                      ).length === 0 && (
+                        <p className="p-2 text-center text-xs text-slate-400">No tools found.</p>
+                      )}
+                    </div>
+                  </div>
+                  {formData.toolsUsed.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1 max-h-12 overflow-y-auto">
+                      {formData.toolsUsed.map(tool => (
+                        <Badge
+                          key={tool}
+                          variant="outline"
+                          className="bg-blue-500/20 text-blue-300 border-blue-500/50"
+                          onClick={() => toggleTool(tool)}
+                          data-testid={`badge-selected-tool-${tool.toLowerCase().replace(/\s+/g, '-')}`}
+                        >
+                          {tool}
+                          <X className="w-3 h-3 ml-1" />
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {(SHOW_OPTIONAL_FIELDS || showAchievementsField) && (
@@ -1419,7 +1543,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
               </div>
 
               {(SHOW_OPTIONAL_FIELDS || showProblemsField || showScopeField) && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {(SHOW_OPTIONAL_FIELDS || showProblemsField) && (
                     <div className="space-y-1">
                       <Label htmlFor="problemAndIssues" className="text-blue-100 tracker-form-label">Problems & Issues</Label>
@@ -1491,56 +1615,6 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
 
                 <hr className="tracker-form-divider" />
               </>)}
-
-              <div className="space-y-1">
-                <Label className="text-blue-100 tracker-form-label">Tools Used</Label>
-                <Command className="bg-slate-700/30 border border-blue-500/10 rounded-md tracker-tools-command">
-                  <CommandInput
-                    placeholder="Search tools..."
-                    value={toolSearch}
-                    onValueChange={setToolSearch}
-                    className="bg-transparent border-none text-white placeholder:text-slate-400"
-                    data-testid="input-tool-search"
-                  />
-                  <CommandList className="max-h-32">
-                    <CommandEmpty className="text-slate-400 p-2">No tools found.</CommandEmpty>
-                    <CommandGroup>
-                      {TOOLS_LIST.filter(tool =>
-                        tool.toLowerCase().includes(toolSearch.toLowerCase())
-                      ).map(tool => (
-                        <CommandItem
-                          key={tool}
-                          onSelect={() => { toggleTool(tool); setToolSearch(''); }}
-                          className={`cursor-pointer py-1 text-xs ${formData.toolsUsed.includes(tool)
-                            ? 'bg-blue-500/20 text-blue-300'
-                            : 'text-slate-300 hover:bg-slate-600/50'
-                            }`}
-                          data-testid={`command-tool-${tool.toLowerCase().replace(/\s+/g, '-')}`}
-                        >
-                          <Check className={`w-4 h-4 mr-2 ${formData.toolsUsed.includes(tool) ? 'opacity-100' : 'opacity-0'}`} />
-                          {tool}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-                {formData.toolsUsed.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-1">
-                    {formData.toolsUsed.map(tool => (
-                      <Badge
-                        key={tool}
-                        variant="outline"
-                        className="bg-blue-500/20 text-blue-300 border-blue-500/50"
-                        onClick={() => toggleTool(tool)}
-                        data-testid={`badge-selected-tool-${tool.toLowerCase().replace(/\s+/g, '-')}`}
-                      >
-                        {tool}
-                        <X className="w-3 h-3 ml-1" />
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </div>
 
               <div className="flex justify-end gap-3 pt-1">
                 <Button

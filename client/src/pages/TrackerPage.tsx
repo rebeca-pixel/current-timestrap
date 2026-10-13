@@ -273,8 +273,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
     enabled: !!user?.employeeCode && !!formattedDate,
   });
 
-  const lmsHours = lmsHoursData?.totalLMSHours || 0;
-  const lmsMinutes = Math.round(lmsHours * 60);
+  const rawLmsHours = lmsHoursData?.totalLMSHours || 0;
 
   // Fetch available PMS tasks for the employee
   // For admin/manager we honour the pmsViewType toggle (All / Department / My Tasks)
@@ -358,7 +357,14 @@ export default function TrackerPage({ user }: TrackerPageProps) {
     },
   });
 
-  const { data: leaveStatusData } = useQuery<{ hasLeave: boolean; status: string | null }>({
+  const { data: leaveStatusData } = useQuery<{
+    hasLeave: boolean; status: string | null;
+    isFullDayLeave?: boolean;
+    hasHalfDayLeave?: boolean; halfDayLeaveStatus?: string | null;
+    hasHalfDayOD?: boolean; hasHourlyOD?: boolean; odHours?: number; odStatus?: string | null;
+    hasPermission?: boolean; permissionHours?: number; permissionStatus?: string | null;
+    totalExemptHours?: number;
+  }>({
     queryKey: ['/api/employee/leave-status', user?.employeeCode, formattedDate],
     enabled: !!user?.employeeCode && !!formattedDate,
     queryFn: async () => {
@@ -367,6 +373,11 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       return res.json();
     },
   });
+
+  // Credit the higher of approved LMS hours vs applied (Approved+Pending) partial
+  // leave/OD/permission so that even pending applications count toward 8h.
+  const lmsHours = Math.max(rawLmsHours, leaveStatusData?.totalExemptHours || 0);
+  const lmsMinutes = Math.round(lmsHours * 60);
 
   const canToggleForceSubmit = user.employeeCode === 'E0046' || user.employeeCode === 'E0048';
 
@@ -725,7 +736,8 @@ export default function TrackerPage({ user }: TrackerPageProps) {
 
   const alreadySubmittedToday = !!dailySubmission;
   const needsPlan = formattedDate === currentToday && !dailyPlanStatus?.submitted;
-  const isOnLeaveToday = !!leaveStatusData?.hasLeave;
+  const isOnLeaveToday = !!leaveStatusData?.hasLeave; // true only for Full Day leave
+  const hasPartialExemption = !!(leaveStatusData?.hasHalfDayLeave || leaveStatusData?.hasHalfDayOD || leaveStatusData?.hasHourlyOD || leaveStatusData?.hasPermission);
 
   // Allow submission if there are pending (draft) tasks or server entries,
   // a plan exists for today,
@@ -810,6 +822,8 @@ export default function TrackerPage({ user }: TrackerPageProps) {
         !hasInvalidTasks
       )
     );
+  // Note: isOnLeaveToday is false for partial leave (half-day, hourly, permissions)
+  // so the employee can submit for the balance hours.
 
   // Human-readable reason the Final Submit button is disabled, so the actual
   // blocker is visible instead of a silently greyed-out button.
@@ -1341,6 +1355,20 @@ export default function TrackerPage({ user }: TrackerPageProps) {
         </div>
       )}
 
+      {/* Partial Leave / OD / Permission informational banners */}
+      {!isOnLeaveToday && hasPartialExemption && (
+        <div className="rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sky-100 text-sm">
+          <div className="font-bold uppercase tracking-wide">Partial Day Applied</div>
+          <p className="mt-1 text-sky-50/90">
+            {leaveStatusData?.hasHalfDayLeave && `Half-day leave (${leaveStatusData.halfDayLeaveStatus || 'Applied'}) — 4h credited. `}
+            {leaveStatusData?.hasHalfDayOD && `Half-day OD (${leaveStatusData.odStatus || 'Applied'}) — 4h credited. `}
+            {leaveStatusData?.hasHourlyOD && `Hourly OD (${leaveStatusData.odStatus || 'Applied'}) — ${leaveStatusData.odHours || 0}h credited. `}
+            {leaveStatusData?.hasPermission && `Permission (${leaveStatusData.permissionStatus || 'Applied'}) — ${leaveStatusData.permissionHours || 0}h credited. `}
+            Please log your timesheet for the remaining balance hours.
+          </p>
+        </div>
+      )}
+
       {/* Merged Banner & Stat Bar Container */}
       <Card className="tracker-top-container relative py-4 px-6 overflow-hidden">
         {/* Top Row: Greeting + Utility Actions */}
@@ -1393,7 +1421,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
                   {format(selectedDate, 'EEEE, MMMM d, yyyy')}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 bg-slate-800 border-blue-500/20" align="end">
+              <PopoverContent className="w-auto p-0 bg-slate-800 border-blue-500/20 tracker-portal-menu" align="end">
                 <Calendar
                   mode="single"
                   selected={selectedDate}
@@ -1578,7 +1606,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
               </div>
               <div>
                 <h3 className="text-blue-400 font-bold text-sm uppercase tracking-wider flex items-center gap-2">
-                  LMS Approved Hours
+                  {(lmsHoursData?.totalLMSHours || 0) >= lmsHours ? 'LMS Approved Hours' : 'LMS Applied Hours (incl. Pending)'}
                 </h3>
                 <div className="flex gap-3 mt-1">
                   {lmsHoursData?.leaveHours ? (
@@ -1663,7 +1691,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
               <SelectTrigger className="tracker-filter-input bg-white/5 border-white/10 text-white focus:ring-1 focus:ring-blue-500/50 h-10 rounded-xl transition-all">
                 <SelectValue placeholder="All Projects" />
               </SelectTrigger>
-              <SelectContent className="bg-slate-900 border-white/10 text-white rounded-xl shadow-2xl">
+              <SelectContent className="bg-slate-900 border-white/10 text-white rounded-xl shadow-2xl tracker-portal-menu">
                 <SelectItem value="all">All Projects</SelectItem>
                 {uniqueProjects.map(project => (
                   <SelectItem key={project} value={project}>{project}</SelectItem>
@@ -1680,7 +1708,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
               <SelectTrigger className="tracker-filter-input bg-white/5 border-white/10 text-white focus:ring-1 focus:ring-blue-500/50 h-10 rounded-xl transition-all">
                 <SelectValue placeholder="All Tasks" />
               </SelectTrigger>
-              <SelectContent className="bg-slate-900 border-white/10 text-white rounded-xl shadow-2xl">
+              <SelectContent className="bg-slate-900 border-white/10 text-white rounded-xl shadow-2xl tracker-portal-menu">
                 <SelectItem value="all">All Tasks</SelectItem>
                 {uniqueTasks.map(task => (
                   <SelectItem key={task} value={task}>{task}</SelectItem>

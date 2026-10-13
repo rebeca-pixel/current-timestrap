@@ -67,6 +67,18 @@ function broadcast(type: string, data: any) {
   });
 }
 
+function exceedsMaximumTimeEntryDuration(startTime: unknown, endTime: unknown): boolean {
+  if (typeof startTime !== 'string' || typeof endTime !== 'string') return false;
+  const timePattern = /^([0-9]|1[0-9]|2[0-3]):([0-5]\d)$/;
+  const start = timePattern.exec(startTime);
+  const end = timePattern.exec(endTime);
+  if (!start || !end) return false;
+  const startMinutes = Number(start[1]) * 60 + Number(start[2]);
+  const endMinutes = Number(end[1]) * 60 + Number(end[2]);
+  const elapsedMinutes = endMinutes - startMinutes;
+  return (elapsedMinutes < 0 ? elapsedMinutes + 24 * 60 : elapsedMinutes) > 4 * 60;
+}
+
 // Helper function to check if a project deadline has passed
 function isProjectExpired(endDate: string | null): boolean {
   if (!endDate) return false;
@@ -105,37 +117,217 @@ function isAfterPlanCutoff(cutoffMinutesOverride?: number): boolean {
 
 async function getLeaveStatusForDate(employeeCode: string, date: string) {
   if (!employeeCode || !date) {
-    return { hasLeave: false, status: null, details: [] as any[] };
+    return {
+      hasLeave: false,
+      status: null,
+      isFullDayLeave: false,
+      hasHalfDayLeave: false,
+      halfDayLeaveStatus: null as string | null,
+      nonODLeaveHours: 0,
+      hasFullDayOD: false,
+      hasHalfDayOD: false,
+      hasHourlyOD: false,
+      odHours: 0,
+      odStatus: null as string | null,
+      odWindows: [] as any[],
+      hasPermission: false,
+      permissionHours: 0,
+      permissionStatus: null as string | null,
+      totalExemptHours: 0,
+      details: [] as any[]
+    };
   }
 
   try {
     const { lmsPool } = await import('./lmsSupabase');
-    const result = await lmsPool.query(`
-      SELECT id, user_id, leave_type, leave_duration_type, status, start_date, end_date
+
+    // 1. Fetch leaves and ODs (Approved & Pending) interpreted in IST
+    const leaveResult = await lmsPool.query(`
+      SELECT id, user_id, leave_type, leave_duration_type, status, start_date, end_date,
+             od_from_time, od_to_time
       FROM leaves
       WHERE user_id = $1
         AND status IN ('Approved', 'Pending')
-        AND start_date <= $2::date
-        AND end_date >= $2::date
+        AND (start_date AT TIME ZONE 'Asia/Kolkata')::date <= $2::date
+        AND (end_date AT TIME ZONE 'Asia/Kolkata')::date >= $2::date
       ORDER BY CASE status WHEN 'Pending' THEN 0 WHEN 'Approved' THEN 1 END ASC
     `, [employeeCode, date]);
 
-    if (!result.rows?.length) {
-      return { hasLeave: false, status: null, details: [] as any[] };
+    // 2. Fetch permissions (Approved & Pending) interpreted in IST
+    let permRows: any[] = [];
+    try {
+      const permResult = await lmsPool.query(`
+        SELECT id, user_id, total_hours, status, permission_date, permission_type
+        FROM permissions
+        WHERE user_id = $1
+          AND status IN ('Approved', 'Pending')
+          AND (permission_date AT TIME ZONE 'Asia/Kolkata')::date = $2::date
+        ORDER BY CASE status WHEN 'Pending' THEN 0 WHEN 'Approved' THEN 1 END ASC
+      `, [employeeCode, date]);
+      permRows = permResult.rows || [];
+    } catch (permErr) {
+      console.error('[LEAVE STATUS] Error checking permissions:', permErr);
     }
 
-    const primaryStatus = result.rows.some((row: any) => row.status === 'Pending')
-      ? 'Pending'
-      : 'Approved';
+    const leaveRows = leaveResult.rows || [];
+
+    const toTimeString = (t: any): string | null => {
+      if (!t) return null;
+      const str = String(t);
+      const match = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+      if (match) {
+        const h = match[1].padStart(2, '0');
+        const m = match[2];
+        const s = match[3] || '00';
+        return `${h}:${m}:${s}`;
+      }
+      return null;
+    };
+
+    const computeHoursBetween = (fromTime: any, toTime: any): number => {
+      if (!fromTime || !toTime) return 0;
+      try {
+        const toMinutes = (t: string): number => {
+          const parts = t.split(':');
+          const h = parseInt(parts[0] || '0', 10);
+          const m = parseInt(parts[1] || '0', 10);
+          const s = parseInt(parts[2] || '0', 10);
+          return h * 60 + m + s / 60;
+        };
+        let from = toMinutes(String(fromTime));
+        let to = toMinutes(String(toTime));
+        if (Number.isNaN(from) || Number.isNaN(to)) return 0;
+        if (to < from) to += 24 * 60;
+        return (to - from) / 60;
+      } catch {
+        return 0;
+      }
+    };
+
+    let hasFullDayLeave = false;
+    let hasHalfDayLeave = false;
+    let halfDayLeaveStatus: string | null = null;
+    let nonODLeaveHours = 0;
+    let fullDayLeaveStatus: string | null = null;
+
+    let hasFullDayOD = false;
+    let hasHalfDayOD = false;
+    let hasHourlyOD = false;
+    let odHours = 0;
+    let odStatus: string | null = null;
+    const odWindows: any[] = [];
+
+    for (const row of leaveRows) {
+      const isOD = (row.leave_type || '').toString().toUpperCase() === 'OD';
+      const dur = (row.leave_duration_type || '').toString().trim();
+      const status = row.status;
+
+      if (isOD) {
+        if (!odStatus) odStatus = status;
+        else if (status === 'Pending') odStatus = 'Pending';
+
+        const explicitFrom = toTimeString(row.od_from_time);
+        const explicitTo = toTimeString(row.od_to_time);
+
+        if (dur === 'Full Day') {
+          hasFullDayOD = true;
+          odHours += 8;
+          odWindows.push({ from: '00:00:00', to: '23:59:59', isFullDay: true, durationType: 'Full Day' });
+        } else if (dur === 'Half Day') {
+          hasHalfDayOD = true;
+          const h = explicitFrom && explicitTo ? (computeHoursBetween(explicitFrom, explicitTo) || 4) : 4;
+          odHours += h;
+          if (explicitFrom && explicitTo) {
+            odWindows.push({ from: explicitFrom, to: explicitTo, isFullDay: false, durationType: 'Half Day' });
+          } else {
+            odWindows.push({ from: '10:00:00', to: '14:00:00', isFullDay: false, durationType: 'Half Day' });
+          }
+        } else if (dur === 'Hourly') {
+          hasHourlyOD = true;
+          const h = computeHoursBetween(row.od_from_time, row.od_to_time);
+          odHours += h;
+          if (explicitFrom && explicitTo) {
+            odWindows.push({ from: explicitFrom, to: explicitTo, isFullDay: false, durationType: 'Hourly' });
+          }
+        }
+      } else {
+        // Regular leave (Casual, Sick, etc.)
+        if (dur === 'Full Day') {
+          hasFullDayLeave = true;
+          nonODLeaveHours += 8;
+          if (!fullDayLeaveStatus) fullDayLeaveStatus = status;
+          else if (status === 'Pending') fullDayLeaveStatus = 'Pending';
+        } else if (dur === 'Half Day') {
+          hasHalfDayLeave = true;
+          nonODLeaveHours += 4;
+          if (!halfDayLeaveStatus) halfDayLeaveStatus = status;
+          else if (status === 'Pending') halfDayLeaveStatus = 'Pending';
+        } else {
+          // If duration type is unspecified, default to Full Day
+          hasFullDayLeave = true;
+          nonODLeaveHours += 8;
+          if (!fullDayLeaveStatus) fullDayLeaveStatus = status;
+        }
+      }
+    }
+
+    if (nonODLeaveHours >= 8) {
+      hasFullDayLeave = true;
+      hasHalfDayLeave = false;
+    }
+
+    let permissionHours = 0;
+    let permissionStatus: string | null = null;
+    const hasPermission = permRows.length > 0;
+    for (const p of permRows) {
+      permissionHours += parseFloat(p.total_hours) || 0;
+      if (!permissionStatus) permissionStatus = p.status;
+      else if (p.status === 'Pending') permissionStatus = 'Pending';
+    }
+
+    const totalExemptHours = nonODLeaveHours + odHours + permissionHours;
+    const primaryStatus = fullDayLeaveStatus || halfDayLeaveStatus || odStatus || permissionStatus || null;
 
     return {
-      hasLeave: true,
+      hasLeave: hasFullDayLeave, // Only true for Full Day leave so it blocks the day
       status: primaryStatus,
-      details: result.rows,
+      isFullDayLeave: hasFullDayLeave,
+      hasHalfDayLeave,
+      halfDayLeaveStatus,
+      nonODLeaveHours,
+      hasFullDayOD,
+      hasHalfDayOD,
+      hasHourlyOD,
+      odHours,
+      odStatus,
+      odWindows,
+      hasPermission,
+      permissionHours,
+      permissionStatus,
+      totalExemptHours,
+      details: leaveRows
     };
   } catch (error) {
     console.error('[LEAVE STATUS] Error checking leave status:', error);
-    return { hasLeave: false, status: null, details: [] as any[] };
+    return {
+      hasLeave: false,
+      status: null,
+      isFullDayLeave: false,
+      hasHalfDayLeave: false,
+      halfDayLeaveStatus: null,
+      nonODLeaveHours: 0,
+      hasFullDayOD: false,
+      hasHalfDayOD: false,
+      hasHourlyOD: false,
+      odHours: 0,
+      odStatus: null,
+      odWindows: [],
+      hasPermission: false,
+      permissionHours: 0,
+      permissionStatus: null,
+      totalExemptHours: 0,
+      details: [] as any[]
+    };
   }
 }
 
@@ -1427,6 +1619,8 @@ export async function registerRoutes(
         FROM key_steps ks
         INNER JOIN projects p ON ks.project_id = p.id
         WHERE p.project_code = $1
+          AND LOWER(TRIM(COALESCE(ks.status, ''))) NOT IN ('completed', 'complete', 'done', 'closed')
+          AND COALESCE(ks.progress, 0) < 100
         ORDER BY ks.title
       `;
       const result = await pmsPool.query(query, [projectId]);
@@ -1962,6 +2156,10 @@ export async function registerRoutes(
         return res.status(400).json({ error: result.error });
       }
 
+      if (exceedsMaximumTimeEntryDuration(entryData.startTime, entryData.endTime)) {
+        return res.status(400).json({ error: "A single time entry cannot exceed 4 hours. Split longer work into separate entries." });
+      }
+
       // Drafts (Plan for the Day auto-entries) may be incomplete; anything submitted must pass the shared rules.
       if (entryData.status && entryData.status !== "draft") {
         const fieldProblems = validateWithRules(entryData, await getTimesheetRules(), "submit");
@@ -2160,6 +2358,13 @@ export async function registerRoutes(
       const entry = await storage.getTimeEntry(id);
       if (!entry) {
         return res.status(404).json({ error: "Time entry not found" });
+      }
+
+      if (exceedsMaximumTimeEntryDuration(
+        entryData.startTime || entry.startTime,
+        entryData.endTime || entry.endTime,
+      )) {
+        return res.status(400).json({ error: "A single time entry cannot exceed 4 hours. Split longer work into separate entries." });
       }
 
       // Only allow editing draft or pending entries
@@ -2550,7 +2755,13 @@ export async function registerRoutes(
 
       // Fetch LMS hours to validate 8-hour rule
       const lmsData = await getLMSHours(employee.employeeCode, date);
-      const totalLMSMinutes = Math.round(lmsData.totalLMSHours * 60);
+      // Also fetch leave status — it includes Pending partial leave/OD/permission
+      // that getLMSHours (Approved-only) doesn't credit yet.
+      const leaveStatus = await getLeaveStatusForDate(employee.employeeCode, date);
+      const totalLMSMinutes = Math.max(
+        Math.round(lmsData.totalLMSHours * 60),
+        Math.round((leaveStatus.totalExemptHours || 0) * 60)
+      );
       const combinedMinutes = totalMinutes + totalLMSMinutes;
 
       // 2. Working Hours Validation (Enforce 8 hours, unless force-submit is on)
@@ -3689,6 +3900,7 @@ export async function registerRoutes(
     let odWindow: { from: string; to: string } | null = null;
     let odIsFullDay = false;
     let effectiveCutoffMinutes = 12 * 60 + 30;
+    let hasPartialPlanExemption = false;
 
     if (employeeId) {
       try {
@@ -3703,22 +3915,37 @@ export async function registerRoutes(
               odWindow = { from: exemption.windows[0].from, to: exemption.windows[0].to };
             }
           }
+          const leaveStatus = await getLeaveStatusForDate(employee.employeeCode, today);
+          if (
+            leaveStatus.hasHalfDayLeave ||
+            leaveStatus.hasHalfDayOD ||
+            leaveStatus.hasHourlyOD ||
+            leaveStatus.hasPermission
+          ) {
+            hasPartialPlanExemption = true;
+          }
+          if (leaveStatus.hasFullDayOD) {
+            odIsFullDay = true;
+          }
+          if (!odWindow && leaveStatus.odWindows && leaveStatus.odWindows.length > 0) {
+            odWindow = { from: leaveStatus.odWindows[0].from, to: leaveStatus.odWindows[0].to };
+          }
         }
       } catch (err) {
         console.error("[PLAN WINDOW] Failed to check OD exemption:", err);
       }
     }
 
-    const isPastCutoff = isAfterPlanCutoff(effectiveCutoffMinutes);
+    const isPastCutoff = hasPartialPlanExemption ? false : isAfterPlanCutoff(effectiveCutoffMinutes);
 
     // Manual override logic: If admin explicitly toggled today, use that state.
     // Otherwise, use the default automated logic (open until cutoff), with the
-    // OD exemption always keeping the window open while the employee is
-    // currently within their approved OD time (or all day, for a Full Day OD).
+    // OD exemption and partial exemptions (half day leave/OD, hourly OD, permission)
+    // keeping the window open so employees can submit for their balance hours.
     const isOverrideToday = settings.planWindowLastModifiedDate === today;
     const planWindowOpen = isOverrideToday
       ? !!settings.planWindowOpen
-      : ((!isAutomatedClosed && !isPastCutoff) || odExempt || odIsFullDay);
+      : ((!isAutomatedClosed && !isPastCutoff) || odExempt || odIsFullDay || hasPartialPlanExemption);
 
     res.json({
       planWindowOpen,
@@ -3729,7 +3956,8 @@ export async function registerRoutes(
       serverTime: new Date().toISOString(),
       odExempt: odExempt || odIsFullDay,
       odIsFullDay,
-      odWindow
+      odWindow,
+      hasPartialPlanExemption
     });
   });
 
@@ -3808,12 +4036,12 @@ export async function registerRoutes(
       const today = format(istNow, "yyyy-MM-dd");
       const isAutomatedClosed = await storage.isDailyPlanClosed(today);
 
-      // OD (On-Duty) exemption: an approved OD pushes the cutoff to the end
-      // of the OD window (or exempts the whole day, for a Full Day OD), so
-      // the employee isn't blocked from submitting/exempted incorrectly
-      // while genuinely on approved OD.
+      // OD (On-Duty) & Partial Exemptions:
+      // Half-day OD/leave, hourly OD, and permissions allow the employee to submit
+      // their plan for the balance hours even after the standard 12:30 PM cutoff.
       let odExempt = false;
       let effectiveCutoffMinutes = 12 * 60 + 30;
+      let hasPartialPlanExemption = false;
       try {
         const employeeForOD = await storage.getEmployee(employeeId);
         if (employeeForOD) {
@@ -3822,17 +4050,29 @@ export async function registerRoutes(
             odExempt = exemption.isFullDay || isWithinApprovedOD(exemption, new Date());
             effectiveCutoffMinutes = getEffectivePlanCutoffMinutes(exemption, effectiveCutoffMinutes);
           }
+          const leaveStatus = await getLeaveStatusForDate(employeeForOD.employeeCode, planDate);
+          if (
+            leaveStatus.hasHalfDayLeave ||
+            leaveStatus.hasHalfDayOD ||
+            leaveStatus.hasHourlyOD ||
+            leaveStatus.hasPermission
+          ) {
+            hasPartialPlanExemption = true;
+          }
+          if (leaveStatus.hasFullDayOD) {
+            odExempt = true;
+          }
         }
       } catch (odErr) {
         console.error("[DAILY PLANS] Failed to check OD exemption:", odErr);
       }
 
-      const isPastCutoff = isAfterPlanCutoff(effectiveCutoffMinutes);
+      const isPastCutoff = hasPartialPlanExemption ? false : isAfterPlanCutoff(effectiveCutoffMinutes);
 
       const isOverrideToday = settings.planWindowLastModifiedDate === today;
       const planWindowOpen = isOverrideToday
         ? !!settings.planWindowOpen
-        : ((!isAutomatedClosed && !isPastCutoff) || odExempt || allowLatePlanSubmission);
+        : ((!isAutomatedClosed && !isPastCutoff) || odExempt || hasPartialPlanExemption || allowLatePlanSubmission);
 
       if (!planWindowOpen) {
         const reason = isPastCutoff ? "12:30 PM cutoff" : "administrative closure";

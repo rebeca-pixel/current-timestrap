@@ -209,27 +209,27 @@ export default function TaskEntryPage({ user: propUser }: { user?: any } = {}) {
   }
 
   return (
-    <div className="min-h-screen bg-[#0B1120] text-white p-6 relative overflow-hidden">
+    <div data-testid="task-entry-page" className="min-h-full bg-[#0B1120] text-white p-4 md:p-6 relative overflow-hidden">
       {/* Background gradients */}
       <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-900/10 via-transparent to-transparent pointer-events-none" />
 
-      <div className="max-w-4xl mx-auto relative z-10 pt-4">
+      <div className="max-w-5xl mx-auto relative z-10 pt-2 md:pt-3">
         <Button
           variant="ghost"
           onClick={handleCancel}
-          className="mb-6 text-slate-400 hover:text-white hover:bg-white/5 transition-all"
+          className="mb-3 text-slate-400 hover:text-white hover:bg-white/5 transition-all"
         >
           <ChevronLeft className="w-4 h-4 mr-2" />
           Back to Tracker
         </Button>
 
-        <Card className="bg-slate-900/60 backdrop-blur-xl border-white/5 p-6 md:p-8 shadow-2xl rounded-2xl">
-          <div className="flex items-center justify-between mb-8 pb-4 border-b border-white/5">
+        <Card className="bg-slate-900/60 backdrop-blur-xl border-white/5 p-3 md:p-4 shadow-2xl rounded-2xl">
+          <div className="flex items-center justify-between mb-3 pb-2 border-b border-white/5">
             <div>
-              <h1 className="text-2xl font-bold text-white tracking-tight" style={{ fontFamily: 'Space Grotesk' }}>
+              <h1 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: 'Space Grotesk' }}>
                 {id ? 'Edit Timesheet Entry' : 'New Timesheet Entry'}
               </h1>
-              <p className="text-slate-400 mt-1 text-sm">
+              <p className="text-slate-400 mt-0.5 text-xs">
                 {id ? 'Update your previously logged task details.' : 'Log a new task for your timesheet.'}
               </p>
             </div>
@@ -242,6 +242,7 @@ export default function TaskEntryPage({ user: propUser }: { user?: any } = {}) {
             task={task as any}
             date={dateParam}
             user={user as any}
+            compactSelectMenus
             onSave={handleSave}
             onCancel={handleCancel}
             saveButtonText={id ? "Update Entry" : "Save Entry"}

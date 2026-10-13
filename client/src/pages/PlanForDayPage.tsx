@@ -150,11 +150,11 @@ function layoutPlan(tasks: any[], dayStart: number, breaksOn: Record<string, boo
   }));
 }
 
-function getTimingErrors(scheduled: ScheduledItem[], dayStart: number): string[] {
+function getTimingErrors(scheduled: ScheduledItem[], dayStart: number, allowAfternoonStart: boolean = false): string[] {
   const errors: string[] = [];
   if (scheduled.length === 0) return errors;
 
-  if (dayStart >= WORK_DAY_NOON_MIN) {
+  if (!allowAfternoonStart && dayStart >= WORK_DAY_NOON_MIN) {
     errors.push(`Your day starts at ${toDisplayTime(dayStart)}. Work usually starts in the morning — check the AM/PM of your start time.`);
   }
   if (dayStart < WORK_DAY_START_MIN) {
@@ -328,6 +328,8 @@ export default function PlanForDayPage() {
   const [projectSearch, setProjectSearch] = useState('');
   const [projectDropdownSearch, setProjectDropdownSearch] = useState('');
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
+  const [keyStepSearch, setKeyStepSearch] = useState('');
+  const [isKeyStepDropdownOpen, setIsKeyStepDropdownOpen] = useState(false);
   const [adminViewType, setAdminViewType] = useState<'admin' | 'department' | 'my-tasks'>('admin');
   const [currentTime, setCurrentTime] = useState(new Date());
   const [serverTimeOffset, setServerTimeOffset] = useState(0);
@@ -344,7 +346,6 @@ export default function PlanForDayPage() {
     () => layoutPlan(userTasks, dayStartMin, breaksOn),
     [userTasks, dayStartMin, breaksOn],
   );
-  const timingErrors = getTimingErrors(scheduled, dayStartMin);
   const totalWorkingMinutes = scheduled.reduce((sum, t) => sum + t.durationMinutes, 0);
   const dayEndMin = scheduled.length ? scheduled[scheduled.length - 1]._endMin : dayStartMin;
 
@@ -498,17 +499,35 @@ export default function PlanForDayPage() {
     },
   });
 
-  const { data: lmsHoursData } = useQuery<{ leaveHours: number; permissionHours: number; totalLMSHours: number }>({
+  const { data: lmsHoursData } = useQuery<{ leaveHours: number; permissionHours: number; totalLMSHours: number; odHours?: number }>({
     queryKey: ['/api/lms/hours', user?.employeeCode, today],
     enabled: !!user?.employeeCode,
     queryFn: async () => {
       const res = await fetch(`/api/lms/hours?employeeCode=${user?.employeeCode}&date=${today}`);
-      if (!res.ok) return { leaveHours: 0, permissionHours: 0, totalLMSHours: 0 };
+      if (!res.ok) return { leaveHours: 0, permissionHours: 0, totalLMSHours: 0, odHours: 0 };
       return res.json();
     },
   });
 
-  const { data: leaveStatusData } = useQuery<{ hasLeave: boolean; status: string | null; message?: string }>({
+  const { data: leaveStatusData } = useQuery<{
+    hasLeave: boolean;
+    status: string | null;
+    isFullDayLeave?: boolean;
+    hasHalfDayLeave?: boolean;
+    halfDayLeaveStatus?: string | null;
+    hasFullDayOD?: boolean;
+    hasHalfDayOD?: boolean;
+    hasHourlyOD?: boolean;
+    odStatus?: string | null;
+    odHours?: number;
+    hasPermission?: boolean;
+    permissionHours?: number;
+    permissionStatus?: string | null;
+    totalExemptHours?: number;
+    odWindows?: { from: string; to: string; durationType: string; isFullDay: boolean }[];
+    details?: any[];
+    message?: string;
+  }>({
     queryKey: ['/api/employee/leave-status', user?.employeeCode, today],
     enabled: !!user?.employeeCode,
     queryFn: async () => {
@@ -536,6 +555,31 @@ export default function PlanForDayPage() {
       if (!res.ok) return [];
       const data = await res.json();
       return Array.isArray(data) ? data : [];
+    },
+  });
+
+  const projectCodes = Array.from(new Set(
+    availableTasks
+      .map((task: any) => task.projectCode)
+      .filter((projectCode: any): projectCode is string => typeof projectCode === 'string' && projectCode.length > 0),
+  )).sort();
+
+  const { data: availableKeySteps = [], isError: isKeyStepsError } = useQuery({
+    queryKey: ['/api/key-steps', projectCodes],
+    enabled: projectCodes.length > 0,
+    queryFn: async () => {
+      const keyStepsByProject = await Promise.all(projectCodes.map(async (projectCode: string) => {
+        const res = await fetch(`/api/key-steps?projectId=${encodeURIComponent(projectCode)}`);
+        if (!res.ok) throw new Error('Failed to fetch project key steps');
+        const data = await res.json();
+        if (!Array.isArray(data)) throw new Error('Invalid key steps response');
+        return data.map((keyStep: any) => ({
+          ...keyStep,
+          projectCode,
+          projectName: availableTasks.find((task: any) => task.projectCode === projectCode)?.projectName || '',
+        }));
+      }));
+      return keyStepsByProject.flat();
     },
   });
 
@@ -586,15 +630,16 @@ export default function PlanForDayPage() {
 
   useEffect(() => { if (activeTab === 'plan') setShowUnselectedForm(false); }, [activeTab]);
 
-  // Close project dropdown on outside click
+  // Close task filters on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (isProjectDropdownOpen && !target.closest('[data-project-dropdown]')) setIsProjectDropdownOpen(false);
+      if (isKeyStepDropdownOpen && !target.closest('[data-key-step-dropdown]')) setIsKeyStepDropdownOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isProjectDropdownOpen]);
+  }, [isProjectDropdownOpen, isKeyStepDropdownOpen]);
 
   // Pre-load the locked / PMS-scheduled tasks exactly once
   useEffect(() => {
@@ -681,10 +726,39 @@ export default function PlanForDayPage() {
   });
 
   /* ---------- filtering ---------- */
+  const selectedKeyStep = availableKeySteps.find((keyStep: any) => (
+    `${keyStep.projectCode}:${keyStep.id}` === keyStepSearch
+  ));
+  const visibleKeySteps = availableKeySteps.filter((keyStep: any) => (
+    !projectSearch || keyStep.projectName === projectSearch
+  ));
+  const taskKeyStepValues = (task: any) => [
+    task.key_step_id,
+    task.keyStepId,
+    task.key_step,
+    task.keyStep,
+  ].filter((value: any) => value !== undefined && value !== null && String(value).trim() !== '')
+    .map((value: any) => String(value).trim().toLowerCase());
+  const findTaskKeyStep = (task: any) => {
+    const values = taskKeyStepValues(task);
+    const matchesTask = (keyStep: any) => values.includes(String(keyStep.id).trim().toLowerCase())
+      || values.includes(String(keyStep.name).trim().toLowerCase());
+    return availableKeySteps.find((keyStep: any) => keyStep.projectCode === task.projectCode && matchesTask(keyStep))
+      || availableKeySteps.find(matchesTask);
+  };
   const filteredAvailableTasks = availableTasks.filter((task: any) => {
     const q = assignedTaskSearch.toLowerCase();
-    const matchesSearch = task.task_name.toLowerCase().includes(q) || task.projectName.toLowerCase().includes(q);
+    const taskKeyStep = findTaskKeyStep(task);
+    const matchesSearch = task.task_name.toLowerCase().includes(q) || task.projectName.toLowerCase().includes(q) || (taskKeyStep?.name || '').toLowerCase().includes(q);
     const matchesProject = projectSearch === '' || task.projectName === projectSearch;
+    const taskKeyValues = taskKeyStepValues(task);
+    const selectedKeyValues = selectedKeyStep
+      ? [String(selectedKeyStep.id), String(selectedKeyStep.name)].map(value => value.trim().toLowerCase())
+      : [];
+    const matchesKeyStep = !selectedKeyStep || (
+      (!task.projectCode || selectedKeyStep.projectCode === task.projectCode)
+      && selectedKeyValues.some(value => taskKeyValues.includes(value))
+    );
 
     let matchesViewType = true;
     if (adminViewType === 'my-tasks') {
@@ -694,7 +768,7 @@ export default function PlanForDayPage() {
         || (task.task_name?.toLowerCase() || '').includes(userName.toLowerCase())
         || task.isAssignedToEmployee === true;
     }
-    return matchesSearch && matchesProject && matchesViewType && !task.isAutoSelected;
+    return matchesSearch && matchesProject && matchesKeyStep && matchesViewType && !task.isAutoSelected;
   });
 
   const uniqueProjects = Array.from(new Set([
@@ -715,10 +789,17 @@ export default function PlanForDayPage() {
     }).map((p: any) => p.project_name).filter(Boolean),
   ])).sort() as string[];
 
-  /* ---------- required hours (unchanged business rules) ---------- */
+  /* ---------- required hours (supports half-day leave/OD and hourly OD/permission) ---------- */
   const STANDARD_DAY_MINUTES = 540; // 9:00 AM – 6:00 PM
   const STANDARD_DAY_START_MIN = 9 * 60;
   const STANDARD_DAY_END_MIN = 18 * 60;
+
+  const isOnFullDayLeave = !!leaveStatusData?.isFullDayLeave || (!!leaveStatusData?.hasLeave && !leaveStatusData?.hasHalfDayLeave);
+  const hasHalfDayLeave = !!leaveStatusData?.hasHalfDayLeave;
+  const hasHalfDayOD = !!leaveStatusData?.hasHalfDayOD || (windowData?.odWindow as any)?.durationType === 'Half Day';
+  const hasHourlyOD = !!leaveStatusData?.hasHourlyOD || (windowData?.odWindow as any)?.durationType === 'Hourly';
+  const hasPermission = !!leaveStatusData?.hasPermission || ((lmsHoursData?.permissionHours || 0) > 0);
+  const hasPartialExemption = hasHalfDayLeave || hasHalfDayOD || hasHourlyOD || hasPermission || (isOnApprovedOD && !odIsFullDay);
 
   const odOverlapMinutes = (() => {
     if (!isOnApprovedOD) return 0;
@@ -729,12 +810,37 @@ export default function PlanForDayPage() {
     return Math.max(0, odEnd - odStart);
   })();
 
-  const approvedLmsMinutes = Math.round((lmsHoursData?.totalLMSHours || 0) * 60);
-  const reducedByApprovedHours = Math.min(approvedLmsMinutes, STANDARD_DAY_MINUTES);
-  const requiredMinutes = Math.max(0, STANDARD_DAY_MINUTES - odOverlapMinutes - reducedByApprovedHours);
+  const requiredMinutes = (() => {
+    if (odIsFullDay || isOnFullDayLeave) return 0;
+
+    let targetMins = STANDARD_DAY_MINUTES;
+
+    if (hasHalfDayLeave || hasHalfDayOD) {
+      // Balance half day requires 4 hours (240 mins) of planned tasks
+      targetMins = 240;
+    } else {
+      // Deduct hourly OD if applicable
+      const odH = leaveStatusData?.odHours || (lmsHoursData?.odHours || 0);
+      if (odH > 0) {
+        targetMins = Math.max(60, targetMins - Math.round(odH * 60));
+      } else if (isOnApprovedOD && odOverlapMinutes > 0) {
+        targetMins = Math.max(60, targetMins - odOverlapMinutes);
+      }
+    }
+
+    // Deduct permission hours if any
+    const permH = leaveStatusData?.permissionHours || (lmsHoursData?.permissionHours || 0);
+    if (permH > 0) {
+      targetMins = Math.max(60, targetMins - Math.round(permH * 60));
+    }
+
+    return Math.max(0, targetMins);
+  })();
+
   const remainingMinutes = Math.max(0, requiredMinutes - totalWorkingMinutes);
+  const timingErrors = getTimingErrors(scheduled, dayStartMin, hasPartialExemption);
   const isValidPlan = totalWorkingMinutes >= requiredMinutes && timingErrors.length === 0 && scheduled.length > 0;
-  const isOnLeaveToday = !!leaveStatusData?.hasLeave;
+  const isOnLeaveToday = isOnFullDayLeave;
 
   /* ---------- submit ---------- */
   const handleNext = () => {
@@ -757,8 +863,8 @@ export default function PlanForDayPage() {
   };
 
   const submitPlan = () => {
-    if (isOnLeaveToday) {
-      toast({ title: 'Leave in effect', description: 'You are on leave today, so the plan for this day is blocked.', variant: 'destructive' });
+    if (isOnFullDayLeave) {
+      toast({ title: 'Leave in effect', description: 'You are on full-day leave today, so the plan for this day is blocked.', variant: 'destructive' });
       return;
     }
     if (!isWindowOpen) {
@@ -926,8 +1032,9 @@ export default function PlanForDayPage() {
           backgroundImage: 'radial-gradient(900px 500px at 50% -20%, rgba(59,130,246,0.10), transparent 60%)',
         }}
       >
-        <header className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 shrink-0">
-          <div className="flex items-center gap-3">
+        <header className="grid grid-cols-1 md:grid-cols-3 items-center gap-2 px-4 py-2 shrink-0">
+          <div className="hidden md:block" />
+          <div className="flex items-center justify-center gap-3 text-center">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-lg shadow-blue-300/50" style={{ background: '#2563eb' }}>
               <CalendarIcon className="w-4 h-4 text-white" />
             </div>
@@ -937,7 +1044,7 @@ export default function PlanForDayPage() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center md:justify-end gap-2">
             <div className="flex items-center gap-1 rounded-2xl border border-slate-200 bg-slate-100 p-1">
               {([['plan', 'Plan', ClipboardList], ['history', 'History', History]] as const).map(([key, label, Icon]) => (
                 <button
@@ -1006,7 +1113,7 @@ export default function PlanForDayPage() {
           </div>
         ) : !showUnselectedForm ? (
           <div className="flex-1 flex flex-col overflow-hidden">
-            {(isOnApprovedOD || isNearCutoff) && (
+            {(isOnApprovedOD || hasHalfDayLeave || hasHalfDayOD || hasHourlyOD || hasPermission || isNearCutoff) && (
               <div className="shrink-0 px-4 pb-2 space-y-1.5">
                 {isOnApprovedOD && (
                   <div className="rounded-2xl px-4 py-2 flex items-center gap-3 text-slate-700 border border-slate-300 bg-slate-100">
@@ -1016,12 +1123,48 @@ export default function PlanForDayPage() {
                       {odIsFullDay
                         ? ' Plan not required today.'
                         : odWindow
-                          ? ` ${formatODTime(odWindow.from)}–${formatODTime(odWindow.to)} exempt. Required: ${Math.floor(requiredMinutes / 60)}h ${requiredMinutes % 60}m.`
+                          ? ` ${formatODTime(odWindow.from)}–${formatODTime(odWindow.to)} exempt. Required for balance hours: ${Math.floor(requiredMinutes / 60)}h ${requiredMinutes % 60}m.`
                           : ' Plan optional during OD.'}
                     </p>
                   </div>
                 )}
-                {isNearCutoff && !isOnApprovedOD && (
+                {hasHalfDayLeave && (
+                  <div className="rounded-2xl px-4 py-2 flex items-center gap-3 text-amber-800 border border-amber-300 bg-amber-50">
+                    <CalendarIcon className="w-4 h-4 shrink-0 text-amber-600" />
+                    <p className="text-xs font-bold">
+                      Half Day Leave Applied ({leaveStatusData?.halfDayLeaveStatus === 'Pending' ? 'Pending Approval' : 'Approved'}) —
+                      {` Please plan for the balance half day (${fmtDuration(requiredMinutes)}).`}
+                    </p>
+                  </div>
+                )}
+                {hasHalfDayOD && !isOnApprovedOD && (
+                  <div className="rounded-2xl px-4 py-2 flex items-center gap-3 text-blue-800 border border-blue-300 bg-blue-50">
+                    <ShieldCheck className="w-4 h-4 shrink-0 text-blue-600" />
+                    <p className="text-xs font-bold">
+                      Half Day OD Applied ({leaveStatusData?.odStatus === 'Pending' ? 'Pending Approval' : 'Approved'}) —
+                      {` Please plan for the balance half day (${fmtDuration(requiredMinutes)}).`}
+                    </p>
+                  </div>
+                )}
+                {hasHourlyOD && !isOnApprovedOD && (
+                  <div className="rounded-2xl px-4 py-2 flex items-center gap-3 text-blue-800 border border-blue-300 bg-blue-50">
+                    <ShieldCheck className="w-4 h-4 shrink-0 text-blue-600" />
+                    <p className="text-xs font-bold">
+                      Hourly OD Applied ({leaveStatusData?.odHours || 0}h, {leaveStatusData?.odStatus === 'Pending' ? 'Pending Approval' : 'Approved'}) —
+                      {` Please plan for the balance hours (${fmtDuration(requiredMinutes)}).`}
+                    </p>
+                  </div>
+                )}
+                {hasPermission && (
+                  <div className="rounded-2xl px-4 py-2 flex items-center gap-3 text-purple-800 border border-purple-300 bg-purple-50">
+                    <Clock className="w-4 h-4 shrink-0 text-purple-600" />
+                    <p className="text-xs font-bold">
+                      Permission Applied ({leaveStatusData?.permissionHours || lmsHoursData?.permissionHours || 0}h, {leaveStatusData?.permissionStatus === 'Pending' ? 'Pending Approval' : 'Approved'}) —
+                      {` Please plan for the balance hours (${fmtDuration(requiredMinutes)}).`}
+                    </p>
+                  </div>
+                )}
+                {isNearCutoff && !isOnApprovedOD && !hasPartialExemption && (
                   <div className="rounded-2xl px-4 py-2 flex items-center gap-3 text-amber-700 border border-amber-300 bg-amber-50">
                     <Clock className="w-4 h-4 animate-pulse shrink-0" />
                     <p className="text-xs font-bold">Plan Window Closing in {minutesUntilCutoff} minutes!</p>
@@ -1051,38 +1194,77 @@ export default function PlanForDayPage() {
                     </div>
                   )}
 
+                  <div className="relative">
+                    <PlannedTaskSearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+                    <Input placeholder="Search tasks..." value={assignedTaskSearch} onChange={(e) => setAssignedTaskSearch(e.target.value)} className="bg-slate-100 border-slate-200 rounded-xl pl-9 h-9 text-sm placeholder:text-slate-500" />
+                  </div>
                   <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <PlannedTaskSearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-                      <Input placeholder="Search tasks..." value={assignedTaskSearch} onChange={(e) => setAssignedTaskSearch(e.target.value)} className="bg-slate-100 border-slate-200 rounded-xl pl-9 h-9 text-sm placeholder:text-slate-500" />
-                    </div>
-                    <div className="relative flex-1 z-30" data-project-dropdown>
+                    <div className="relative flex-1 z-30 space-y-1" data-project-dropdown>
+                      <span className="block pl-1 text-[10px] font-bold uppercase tracking-wider text-blue-700">Project</span>
                       <button
                         onClick={() => setIsProjectDropdownOpen(!isProjectDropdownOpen)}
-                        className="w-full h-9 rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm text-slate-800 flex items-center justify-between hover:bg-slate-100 transition-colors"
+                        className="w-full h-9 rounded-xl border border-blue-200 bg-blue-50 px-3 text-sm text-blue-950 flex items-center justify-between hover:bg-blue-100 transition-colors"
                       >
                         <span className="truncate">{projectSearch || 'All Projects'}</span>
                         <ArrowDown className={`w-3 h-3 shrink-0 text-slate-500 transition-transform ${isProjectDropdownOpen ? 'rotate-180' : ''}`} />
                       </button>
                       {isProjectDropdownOpen && (
-                        <div className="absolute right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 w-72 max-w-[85vw] overflow-hidden">
+                        <div className="absolute left-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 w-80 max-w-[calc(100vw-2rem)] overflow-hidden">
                           <div className="p-2 border-b border-slate-200">
                             <Input placeholder="Search projects..." value={projectDropdownSearch} onChange={(e) => setProjectDropdownSearch(e.target.value)} className="bg-slate-100 border-slate-200 rounded-lg h-8 text-sm placeholder:text-slate-500" />
                           </div>
                           <div className="max-h-64 overflow-y-auto p-1.5 space-y-0.5">
-                            <button onClick={() => { setProjectSearch(''); setIsProjectDropdownOpen(false); setProjectDropdownSearch(''); }} className="w-full text-left px-3 py-1.5 rounded-lg text-sm text-slate-700 hover:bg-slate-100">All Projects</button>
+                            <button onClick={() => { setProjectSearch(''); setKeyStepSearch(''); setIsProjectDropdownOpen(false); setProjectDropdownSearch(''); }} className="w-full text-left px-3 py-1.5 rounded-lg text-sm text-slate-700 hover:bg-slate-100">All Projects</button>
                             {uniqueProjects.filter(p => p.toLowerCase().includes(projectDropdownSearch.toLowerCase())).map(p => (
                               <button
                                 key={p}
-                                onClick={() => { setProjectSearch(p); setIsProjectDropdownOpen(false); setProjectDropdownSearch(''); }}
-                                className={`w-full flex items-center gap-2 text-left px-3 py-1.5 rounded-lg text-sm transition-colors ${projectSearch === p ? 'bg-blue-100 text-blue-800 font-semibold' : 'text-slate-700 hover:bg-slate-100'}`}
+                                onClick={() => { setProjectSearch(p); setKeyStepSearch(''); setIsProjectDropdownOpen(false); setProjectDropdownSearch(''); }}
+                                className={`w-full flex items-start gap-2 text-left px-3 py-2 rounded-lg text-sm transition-colors ${projectSearch === p ? 'bg-blue-100 text-blue-800 font-semibold' : 'text-slate-700 hover:bg-slate-100'}`}
                               >
-                                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: '#64748b' }} />
-                                <span className="truncate">{p}</span>
+                                <span className="w-2 h-2 mt-1.5 rounded-full shrink-0" style={{ background: '#64748b' }} />
+                                <span className="min-w-0 flex-1 whitespace-normal break-words">{p}</span>
                               </button>
                             ))}
                             {uniqueProjects.filter(p => p.toLowerCase().includes(projectDropdownSearch.toLowerCase())).length === 0 && (
                               <div className="px-3 py-2 text-xs text-slate-500 text-center">No projects found</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="relative flex-1 z-20 space-y-1" data-key-step-dropdown>
+                      <span className="block pl-1 text-[10px] font-bold uppercase tracking-wider text-violet-700">Key step</span>
+                      <button
+                        onClick={() => setIsKeyStepDropdownOpen(!isKeyStepDropdownOpen)}
+                        className="w-full h-9 rounded-xl border border-violet-200 bg-violet-50 px-3 text-sm text-violet-950 flex items-center justify-between hover:bg-violet-100 transition-colors"
+                      >
+                        <span className="truncate">
+                          {selectedKeyStep?.name || 'All Key Steps'}
+                        </span>
+                        <ArrowDown className={`w-3 h-3 shrink-0 text-slate-500 transition-transform ${isKeyStepDropdownOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                      {isKeyStepDropdownOpen && (
+                        <div className="absolute right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 w-72 max-w-[85vw] overflow-hidden">
+                          <div className="max-h-64 overflow-y-auto p-1.5 space-y-0.5">
+                            <button
+                              onClick={() => { setKeyStepSearch(''); setIsKeyStepDropdownOpen(false); }}
+                              className="w-full text-left px-3 py-1.5 rounded-lg text-sm text-slate-700 hover:bg-slate-100"
+                            >All Key Steps</button>
+                            {visibleKeySteps.map((keyStep: any) => (
+                              <button
+                                key={`${keyStep.projectCode}-${keyStep.id}`}
+                                  onClick={() => { setKeyStepSearch(`${keyStep.projectCode}:${keyStep.id}`); setIsKeyStepDropdownOpen(false); }}
+                                  className={`w-full flex flex-col items-start text-left px-3 py-1.5 rounded-lg text-sm transition-colors ${keyStepSearch === `${keyStep.projectCode}:${keyStep.id}` ? 'bg-violet-100 text-violet-800 font-semibold' : 'text-slate-700 hover:bg-slate-100'}`}
+                              >
+                                  <span className="truncate w-full"><span className="text-[9px] font-bold uppercase tracking-wide text-violet-600">Key step · </span>{keyStep.name}</span>
+                                  <span className="truncate w-full text-[10px] text-blue-700">Project · {keyStep.projectName}</span>
+                              </button>
+                            ))}
+                            {isKeyStepsError && (
+                              <div className="px-3 py-2 text-xs text-rose-600 text-center">Could not load key steps</div>
+                            )}
+                            {!isKeyStepsError && visibleKeySteps.length === 0 && (
+                              <div className="px-3 py-2 text-xs text-slate-500 text-center">No key steps found</div>
                             )}
                           </div>
                         </div>
@@ -1096,7 +1278,9 @@ export default function PlanForDayPage() {
                     {filteredAvailableTasks.length === 0 && (
                       <div className="py-12 text-center space-y-2">
                         <div className="text-4xl">🔎</div>
-                        <p className="text-slate-500 text-sm font-medium">No manual tasks available.</p>
+                        <p className="text-slate-500 text-sm font-medium">
+                          {assignedTaskSearch || projectSearch || keyStepSearch ? 'No tasks match the selected filters.' : 'No manual tasks available.'}
+                        </p>
                       </div>
                     )}
                     {filteredAvailableTasks.map((task: any) => {
@@ -1122,7 +1306,16 @@ export default function PlanForDayPage() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-[13px] font-bold text-slate-900 truncate">{task.task_name}</p>
-                            <p className="text-[10px] font-semibold uppercase tracking-wide truncate" style={{ color: '#94a3b8' }}>{task.projectName}</p>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              <span className="max-w-full truncate rounded-md border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold text-blue-700">
+                                Project: {task.projectName}
+                              </span>
+                              {findTaskKeyStep(task)?.name && (
+                                <span className="max-w-full truncate rounded-md border border-violet-100 bg-violet-50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700">
+                                  Key step: {findTaskKeyStep(task).name}
+                                </span>
+                              )}
+                            </div>
                           </div>
                           {count > 0 && (
                             <button type="button" title="Remove one" onClick={(e) => { e.stopPropagation(); removeOneInstance(task.id); }} className="w-7 h-7 rounded-full flex items-center justify-center text-rose-600 hover:bg-rose-400/15 shrink-0">
@@ -1152,7 +1345,7 @@ export default function PlanForDayPage() {
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5">
                           <TimeSelect value={dayStartMin} onChange={setDayStartMin} />
-                          {[9 * 60, 9 * 60 + 30, 10 * 60].map(m => (
+                          {(hasPartialExemption ? [9 * 60, 10 * 60, 13 * 60 + 30, 14 * 60] : [9 * 60, 9 * 60 + 30, 10 * 60]).map(m => (
                             <button key={m} type="button" onClick={() => setDayStartMin(m)} className={`h-8 px-2.5 rounded-full text-[11px] font-bold border transition-colors ${dayStartMin === m ? 'bg-blue-500 border-blue-400 text-white shadow' : 'border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-100'}`}>{toDisplayTime(m)}</button>
                           ))}
                           <button
@@ -1247,6 +1440,7 @@ export default function PlanForDayPage() {
                       }
 
                       const h = projectHue(item.projectName);
+                      const itemKeyStep = findTaskKeyStep(item);
                       const taskIdx = userTasks.findIndex(t => t.instanceId === item.instanceId);
                       const expanded = expandedId === item.instanceId;
                       const hasExtras = !!(item.subtaskName || item.tool || item.scheduleData?.extensionReason);
@@ -1267,7 +1461,21 @@ export default function PlanForDayPage() {
                                   {item.task_name}
                                   {item.isAutoSelected && <span className="ml-2 text-[9px] font-bold uppercase text-violet-700 bg-violet-100 rounded-full px-1.5 py-0.5 align-middle">PMS</span>}
                                 </p>
-                                <p className="text-[10px] font-semibold uppercase tracking-wide truncate" style={{ color: '#94a3b8' }}>{item.projectName}{item.subtaskName ? ` · ${item.subtaskName}` : ''}</p>
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  <span className="max-w-full truncate rounded-md border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold text-blue-700">
+                                    Project: {item.projectName}
+                                  </span>
+                                  {itemKeyStep?.name && (
+                                    <span className="max-w-full truncate rounded-md border border-violet-100 bg-violet-50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700">
+                                      Key step: {itemKeyStep.name}
+                                    </span>
+                                  )}
+                                  {item.subtaskName && (
+                                    <span className="max-w-full truncate rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
+                                      Subtask: {item.subtaskName}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                               <select
                                 aria-label="Duration"

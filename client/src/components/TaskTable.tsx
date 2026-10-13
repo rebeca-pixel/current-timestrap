@@ -69,12 +69,31 @@ export default function TaskTable({ tasks, onEdit, onDelete, onComplete, onReope
   const [quickSaving, setQuickSaving] = useState(false);
   const [quickStart, setQuickStart] = useState('');
   const [quickEnd, setQuickEnd] = useState('');
+  const [quickTimeAdjustment, setQuickTimeAdjustment] = useState<string | null>(null);
   const [quickTools, setQuickTools] = useState<string[]>([]);
   const [quickToolSearch, setQuickToolSearch] = useState('');
   const toggleQuickTool = (tool: string) =>
     setQuickTools(prev => prev.includes(tool) ? prev.filter(t => t !== tool) : [...prev, tool]);
   const quickSubtaskOk = quickSubtasks.length === 0 || !!quickSubTask;
-  const quickTimeValid = !!quickStart && !!quickEnd && quickEnd > quickStart;
+  const quickStartMinutes = quickStart ? Number(quickStart.slice(0, 2)) * 60 + Number(quickStart.slice(3, 5)) : null;
+  const quickEndMinutes = quickEnd ? Number(quickEnd.slice(0, 2)) * 60 + Number(quickEnd.slice(3, 5)) : null;
+  const quickDurationMinutes = quickStartMinutes !== null && quickEndMinutes !== null
+    ? quickEndMinutes - quickStartMinutes
+    : 0;
+  const quickMaxEnd = quickStartMinutes !== null
+    ? `${String(Math.floor(Math.min(23 * 60 + 59, quickStartMinutes + 4 * 60) / 60)).padStart(2, '0')}:${String(Math.min(23 * 60 + 59, quickStartMinutes + 4 * 60) % 60).padStart(2, '0')}`
+    : undefined;
+  const quickTimeValid = !!quickStart && !!quickEnd && quickDurationMinutes > 0 && quickDurationMinutes <= 4 * 60;
+  const adjustQuickEndToLimit = (start: string, end: string) => {
+    if (!start || !end) return;
+    const startMinutes = Number(start.slice(0, 2)) * 60 + Number(start.slice(3, 5));
+    const endMinutes = Number(end.slice(0, 2)) * 60 + Number(end.slice(3, 5));
+    const maxEndMinutes = Math.min(23 * 60 + 59, startMinutes + 4 * 60);
+    if (endMinutes <= maxEndMinutes) return;
+    const adjustedEnd = `${String(Math.floor(maxEndMinutes / 60)).padStart(2, '0')}:${String(maxEndMinutes % 60).padStart(2, '0')}`;
+    setQuickEnd(adjustedEnd);
+    setQuickTimeAdjustment(`End time adjusted to ${adjustedEnd}; one entry can be at most 4 hours.`);
+  };
 
   const openQuickFill = (task: Task) => {
     setQuickId(task.id);
@@ -82,6 +101,7 @@ export default function TaskTable({ tasks, onEdit, onDelete, onComplete, onReope
     setQuickProgress(task.percentageComplete || 0);
     setQuickStart(task.startTime || '');
     setQuickEnd(task.endTime || '');
+    setQuickTimeAdjustment(null);
     setQuickTools(task.toolsUsed || []);
     setQuickToolSearch('');
     setQuickSubTask(task.subTask || '');
@@ -276,7 +296,7 @@ export default function TaskTable({ tasks, onEdit, onDelete, onComplete, onReope
                               <MoreHorizontal className="w-4 h-4" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-slate-800 border-blue-500/20">
+                          <DropdownMenuContent align="end" className="bg-slate-800 border-blue-500/20 tracker-portal-menu">
                             <DropdownMenuItem
                               onClick={() => onEdit(task)}
                               className="text-blue-200 focus:bg-slate-700 focus:text-white"
@@ -342,7 +362,7 @@ export default function TaskTable({ tasks, onEdit, onDelete, onComplete, onReope
                                 <SelectTrigger className="h-9 bg-slate-900/60 border-blue-500/20 text-white [&>span]:truncate" data-testid={`select-quick-subtask-${task.id}`}>
                                   <SelectValue placeholder="Select a sub task" />
                                 </SelectTrigger>
-                                <SelectContent>
+                                <SelectContent className="tracker-quickfill-select-content">
                                   {quickSubTask && !quickSubtasks.find(x => x.title === quickSubTask) && (
                                     <SelectItem value={quickSubTask}>{quickSubTask}</SelectItem>
                                   )}
@@ -355,12 +375,22 @@ export default function TaskTable({ tasks, onEdit, onDelete, onComplete, onReope
                           )}
                           <div className="space-y-1 w-32">
                             <label className="text-[10px] font-bold uppercase tracking-wider text-blue-200/60">Start *</label>
-                            <Input type="time" value={quickStart} onChange={(e) => setQuickStart(e.target.value)}
+                            <Input type="time" value={quickStart}
+                              onChange={(e) => {
+                                setQuickStart(e.target.value);
+                                setQuickTimeAdjustment(null);
+                              }}
+                              onBlur={(e) => adjustQuickEndToLimit(e.currentTarget.value, quickEnd)}
                               className="h-9 px-2 bg-slate-900/60 border-blue-500/20 text-white" data-testid={`input-quick-start-${task.id}`} />
                           </div>
                           <div className="space-y-1 w-32">
                             <label className="text-[10px] font-bold uppercase tracking-wider text-blue-200/60">End *</label>
-                            <Input type="time" value={quickEnd} onChange={(e) => setQuickEnd(e.target.value)}
+                            <Input type="time" value={quickEnd}
+                              onChange={(e) => {
+                                setQuickEnd(e.target.value);
+                                setQuickTimeAdjustment(null);
+                              }}
+                              onBlur={(e) => adjustQuickEndToLimit(quickStart, e.currentTarget.value)}
                               className="h-9 px-2 bg-slate-900/60 border-blue-500/20 text-white" data-testid={`input-quick-end-${task.id}`} />
                           </div>
                           <div className="space-y-1 w-24">
@@ -395,7 +425,7 @@ export default function TaskTable({ tasks, onEdit, onDelete, onComplete, onReope
                                 <ChevronDown className="w-4 h-4 ml-2" />
                               </Button>
                             </PopoverTrigger>
-                            <PopoverContent align="start" className="w-72 p-0 bg-slate-900 border-blue-500/20">
+                            <PopoverContent align="start" className="w-72 p-0 bg-slate-900 border-blue-500/20 tracker-quickfill-select-content">
                               {quickTools.length > 0 && (
                                 <div className="flex flex-wrap gap-1.5 p-2 border-b border-blue-500/10 max-h-24 overflow-y-auto">
                                   {quickTools.map(tool => (
@@ -441,7 +471,18 @@ export default function TaskTable({ tasks, onEdit, onDelete, onComplete, onReope
                             </Button>
                           </div>
                         </div>
-                        {!quickTimeValid && <p className="text-xs text-rose-400 mt-1">End time must be after start time</p>}
+                        {(quickTimeAdjustment || (quickDurationMinutes > 4 * 60 && quickMaxEnd)) && (
+                          <p className="text-xs text-amber-300 mt-2" role="status">
+                            {quickTimeAdjustment || `End time will be adjusted to ${quickMaxEnd}; one entry can be at most 4 hours.`}
+                          </p>
+                        )}
+                        {!quickTimeValid && (
+                          <p className="text-xs text-rose-400 mt-1">
+                            {!quickStart || !quickEnd || quickDurationMinutes <= 0
+                              ? 'End time must be after start time'
+                              : 'A single time entry cannot exceed 4 hours'}
+                          </p>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

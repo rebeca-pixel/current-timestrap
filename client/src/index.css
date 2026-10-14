@@ -2774,42 +2774,16 @@ html:not([style*="invert"]) .available-tasks-scroll-container {
 }
 
 @media (min-width: 1024px) {
+
+  /* FIX: do NOT use CSS `zoom` here. `zoom` breaks the position maths of
+     Radix popper (dropdowns/selects/popovers), so the avatar/logout menu and
+     the "..." edit menu opened off-screen or could not be clicked.
+     Instead, shrink the root font-size: every rem-based size (Tailwind) scales
+     the same way, and portal menus scale with it automatically. */
   :root {
     --app-scale: 0.67;
-    --app-header-h: calc(4rem * var(--app-scale));
-  }
-
-  /* Header */
-  [data-testid="app-header"] {
-    zoom: var(--app-scale);
-  }
-
-  /* Sidebar: shrink its width and its contents by the same amount */
-  [data-slot="sidebar-wrapper"] {
-    --sidebar-width: calc(14rem * var(--app-scale)) !important;
-    --sidebar-width-icon: calc(3.5rem * var(--app-scale)) !important;
-  }
-
-  [data-sidebar="sidebar"] [data-sidebar="header"],
-  [data-sidebar="sidebar"] [data-sidebar="content"],
-  [data-sidebar="sidebar"] [data-sidebar="footer"] {
-    zoom: var(--app-scale);
-  }
-
-  /* Tracker page (everything under the header) */
-  [data-testid="tracker-page"] {
-    zoom: var(--app-scale);
-  }
-
-  /* Match the Tracker's compact desktop scale on the task-entry editor. */
-  [data-testid="task-entry-page"] {
-    zoom: var(--app-scale);
-  }
-
-  /* Portal menus do not inherit the compact scale applied to their page. */
-  .task-entry-select-content,
-  .tracker-quickfill-select-content,
-  .tracker-portal-menu {
-    zoom: var(--app-scale);
+    font-size: calc(16px * var(--app-scale));
+    /* 4rem is already scaled because rem scales */
+    --app-header-h: 4rem;
   }
 }

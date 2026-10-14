@@ -32,6 +32,27 @@ if (timeguardDatabaseUrl) {
 }
 
 /**
+ * Read-only TimeGuard query used by the suggestion / activity-timeline features. If the TimeGuard database
+ * is missing an expected table or column (Postgres 42P01 / 42703 — e.g. `employee_tool_usage` not created, or
+ * TIMEGUARD_DATABASE_URL pointing at the wrong database) it returns "no rows" instead of throwing, so the
+ * feature degrades to "nothing to suggest" rather than a 500 error. Any other error still propagates.
+ */
+const warnedMissing = new Set<string>();
+async function tgQuery(sql: string, params: any[]): Promise<{ rows: any[]; rowCount: number | null }> {
+  try {
+    return await timeguardPool!.query(sql, params);
+  } catch (err: any) {
+    if (err?.code !== "42P01" && err?.code !== "42703") throw err;
+    const key = String(err?.message);
+    if (!warnedMissing.has(key)) {
+      warnedMissing.add(key);
+      console.warn(`⚠️  TimeGuard DB schema problem (${err.message}). Treating as "no data". Check that TIMEGUARD_DATABASE_URL points at the TimeGuard database.`);
+    }
+    return { rows: [], rowCount: 0 };
+  }
+}
+
+/**
  * Validates the "Tools Used" selected on a timesheet entry against TimeGuard
  * Agent's actual tool-usage logs (table: employee_tool_usage).
  *
@@ -186,7 +207,7 @@ export async function getToolActivitySummary(
     return { entries: [], totalMinutes: 0, noData: true };
   }
 
-  const result = await timeguardPool.query(
+  const result = await tgQuery(
     `SELECT tool_name,
             GREATEST(start_time, $2::timestamptz) AS clipped_start,
             LEAST(end_time, $3::timestamptz) AS clipped_end
@@ -268,7 +289,7 @@ export async function getActivityLogEntries(
     return [];
   }
 
-  const employeeResult = await timeguardPool.query(
+  const employeeResult = await tgQuery(
     `SELECT id FROM employees WHERE UPPER(TRIM(employee_code)) = UPPER(TRIM($1)) LIMIT 1`,
     [employeeCode]
   );
@@ -278,7 +299,7 @@ export async function getActivityLogEntries(
     return [];
   }
 
-  const result = await timeguardPool.query(
+  const result = await tgQuery(
     `SELECT activity_type,
             COALESCE(app_name, '') AS app_name,
             COALESCE(title, '') AS title,
@@ -412,7 +433,7 @@ export async function getActualWorkedTools(
     return [];
   }
 
-  const employeeResult = await timeguardPool.query(
+  const employeeResult = await tgQuery(
     `SELECT id FROM employees WHERE UPPER(TRIM(employee_code)) = UPPER(TRIM($1)) LIMIT 1`,
     [employeeCode]
   );
@@ -421,7 +442,7 @@ export async function getActualWorkedTools(
     return [];
   }
 
-  const result = await timeguardPool.query(
+  const result = await tgQuery(
     `SELECT activity_type,
             COALESCE(app_name, '') AS app_name,
             COALESCE(title, '') AS title,
@@ -471,4 +492,115 @@ export async function getActualWorkedTools(
   }
 
   return entries;
+}
+/**
+ * Self-check for the TimeGuard connection, used by GET /api/timeguard/diagnose.
+ * Answers "why is the Activity Timeline / Suggest from TimeGuard empty?" by checking, step by step:
+ * the connection, which of the expected tables exist, their column types, whether the employee exists
+ * in TimeGuard's own `employees` table, and whether activity_logs has rows for that employee / window.
+ * Returns metadata only (no window titles / URLs).
+ */
+export async function diagnoseTimeGuard(employeeCode: string, date?: string, startTime?: string, endTime?: string) {
+  const report: Record<string, any> = { configured: !!timeguardPool, checks: {} as Record<string, any>, problems: [] as string[] };
+  if (!timeguardPool) {
+    report.problems.push("TIMEGUARD_DATABASE_URL is not set in .env, so no TimeGuard data can be read.");
+    return report;
+  }
+  const run = async (name: string, sql: string, params: any[] = []) => {
+    try {
+      const r = await timeguardPool!.query(sql, params);
+      report.checks[name] = r.rows;
+      return r.rows as any[];
+    } catch (err: any) {
+      report.checks[name] = { error: err?.message, code: err?.code };
+      return null;
+    }
+  };
+
+  const who = await run("connection", `SELECT current_database() AS database, current_schema() AS schema, current_setting('TimeZone') AS session_timezone`);
+  if (!who) {
+    report.problems.push("Could not connect/query the TimeGuard database. Check TIMEGUARD_DATABASE_URL and network access.");
+    return report;
+  }
+
+  const tables = (await run(
+    "tables",
+    `SELECT table_schema, table_name FROM information_schema.tables
+     WHERE table_name IN ('employees','activity_logs','employee_tool_usage') ORDER BY table_name`
+  )) || [];
+  const have = new Set(tables.map((t: any) => t.table_name));
+  for (const t of ["employees", "activity_logs"]) {
+    if (!have.has(t)) report.problems.push(`Table "${t}" does not exist in this database — the Activity Timeline and Suggest need it. This URL probably points at the wrong database/schema.`);
+  }
+  if (!have.has("employee_tool_usage")) {
+    report.problems.push(`Table "employee_tool_usage" does not exist (only needed for Tool Validation).`);
+  }
+
+  await run(
+    "activity_logs_columns",
+    `SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'activity_logs' ORDER BY ordinal_position`
+  );
+  await run(
+    "employees_columns",
+    `SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'employees' ORDER BY ordinal_position`
+  );
+
+  if (!have.has("employees") || !have.has("activity_logs")) return report;
+
+  const emp = await run(
+    "employee_lookup",
+    `SELECT id FROM employees WHERE UPPER(TRIM(employee_code)) = UPPER(TRIM($1)) LIMIT 1`,
+    [employeeCode]
+  );
+  const employeeId = emp?.[0]?.id;
+  if (!employeeId) {
+    report.problems.push(`Employee code "${employeeCode}" was not found in TimeGuard's employees table (matched on employee_code), so no activity can be linked to this user.`);
+    return report;
+  }
+
+  const range = await run(
+    "activity_logs_for_employee",
+    `SELECT COUNT(*)::int AS rows, MIN(start_time)::text AS earliest, MAX(start_time)::text AS latest
+     FROM activity_logs WHERE employee_id = $1`,
+    [employeeId]
+  );
+  if (range?.[0]?.rows === 0) {
+    report.problems.push("activity_logs has no rows at all for this employee. Is the TimeGuard agent running/syncing for them?");
+    return report;
+  }
+
+  if (date) {
+    await run(
+      "activity_logs_by_type_near_date",
+      `SELECT activity_type, COUNT(*)::int AS rows, MIN(start_time)::text AS earliest, MAX(start_time)::text AS latest
+       FROM activity_logs
+       WHERE employee_id = $1
+         AND start_time >= ($2::date - interval '1 day') AND start_time < ($2::date + interval '2 day')
+       GROUP BY activity_type ORDER BY rows DESC`,
+      [employeeId, date]
+    );
+  }
+  if (date && startTime && endTime) {
+    let s: string, e: string;
+    try {
+      s = istDateTimeToUtcIso(date, startTime);
+      e = istDateTimeToUtcIso(date, endTime);
+      report.window_utc = { start: s, end: e };
+      const inWindow = await run(
+        "activity_logs_in_window",
+        `SELECT COUNT(*)::int AS rows FROM activity_logs
+         WHERE employee_id = $1 AND activity_type IN ('app','website')
+           AND start_time < $3::timestamptz
+           AND COALESCE(end_time, start_time + make_interval(secs => COALESCE(duration_seconds, 0))) > $2::timestamptz`,
+        [employeeId, s, e]
+      );
+      if (inWindow?.[0]?.rows === 0) {
+        report.problems.push("No 'app'/'website' rows overlap this entry's start–end window. Compare window_utc with the earliest/latest times above: a ~5h30m shift means start_time is stored as local (IST) time without a time zone; otherwise the agent simply logged nothing in that window.");
+      }
+    } catch {
+      report.problems.push("Could not parse date/startTime/endTime.");
+    }
+  }
+  if (report.problems.length === 0) report.problems.push("No problems found: TimeGuard returns rows for this employee/window.");
+  return report;
 }

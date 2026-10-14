@@ -109,10 +109,39 @@ const filterSelectItems = (children: React.ReactNode, query: string): { children
   return { children: filterNode(children), total, matches };
 };
 
+/**
+ * Keyboard handling for a search box that lives inside a Select list.
+ * Without it the box swallows every key, so the list cannot be driven from the keyboard.
+ *   ArrowDown / PageDown -> first option      ArrowUp / End -> last option
+ *   Enter                -> pick first match  Escape / Tab -> left to Radix (close)
+ * From the options, Radix already handles Up/Down/Home/End/Enter; SelectContent hands ArrowUp on the
+ * first option back to the search box (see onKeyDown below).
+ */
+export function handleSelectSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+  const key = event.key;
+  if (key === "Escape" || key === "Tab") return;
+  event.stopPropagation(); // stop Radix typeahead from eating the characters being typed
+  const listbox = event.currentTarget.closest('[role="listbox"]');
+  if (!listbox) return;
+  const options = Array.from(listbox.querySelectorAll<HTMLElement>('[role="option"]:not([data-disabled])'));
+  if (options.length === 0) return;
+  if (key === "ArrowDown" || key === "PageDown") {
+    event.preventDefault();
+    options[0].focus();
+  } else if (key === "ArrowUp" || key === "End") {
+    event.preventDefault();
+    options[options.length - 1].focus();
+  } else if (key === "Enter") {
+    event.preventDefault();
+    options[0].focus();
+    options[0].dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  }
+}
+
 const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   SelectContentProps
->(({ className, children, position = "popper", searchable = true, onCloseAutoFocus, ...props }, ref) => {
+>(({ className, children, position = "popper", searchable = true, onCloseAutoFocus, onKeyDown, ...props }, ref) => {
   const [search, setSearch] = React.useState("");
   const filtered = searchable ? filterSelectItems(children, search) : null;
 
@@ -123,13 +152,27 @@ const SelectContent = React.forwardRef<
         className={cn(
           "relative z-50 max-h-[--radix-select-content-available-height] min-w-[8rem] overflow-y-auto overflow-x-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-select-content-transform-origin]",
           position === "popper" &&
-            "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
+          "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
           className
         )}
         position={position}
         onCloseAutoFocus={(event) => {
           setSearch("");
           onCloseAutoFocus?.(event);
+        }}
+        onKeyDown={(event) => {
+          onKeyDown?.(event);
+          if (event.defaultPrevented || event.key !== "ArrowUp") return;
+          // ArrowUp on the first option goes back to the search box (if this list has one).
+          const target = event.target as HTMLElement;
+          const listbox = event.currentTarget as HTMLElement;
+          const options = Array.from(listbox.querySelectorAll<HTMLElement>('[role="option"]:not([data-disabled])'));
+          const searchBox = listbox.querySelector<HTMLInputElement>("[data-select-search]");
+          if (searchBox && options[0] === target) {
+            event.preventDefault();
+            event.stopPropagation();
+            searchBox.focus();
+          }
         }}
         {...props}
       >
@@ -138,7 +181,7 @@ const SelectContent = React.forwardRef<
           className={cn(
             "p-1",
             position === "popper" &&
-              "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]"
+            "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]"
           )}
         >
           {searchable && filtered && filtered.total > 0 && (
@@ -148,11 +191,10 @@ const SelectContent = React.forwardRef<
                 type="search"
                 aria-label="Search options"
                 placeholder="Search..."
+                data-select-search
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Escape" && event.key !== "Tab") event.stopPropagation();
-                }}
+                onKeyDown={handleSelectSearchKeyDown}
                 className="h-9 min-w-0 flex-1 bg-transparent text-sm text-inherit outline-none placeholder:text-muted-foreground"
               />
             </div>

@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { playSound, popEmoji, speak } from '@/lib/feedback';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, handleSelectSearchKeyDown } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Play, Square, Save, Clock, X, Check, Plus, Search, ChevronDown } from 'lucide-react';
@@ -149,6 +149,8 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
       : null
   ));
   const [projectSearch, setProjectSearch] = useState('');
+  const [isProjectSelectOpen, setIsProjectSelectOpen] = useState(false);
+  const projectSearchInputRef = useRef<HTMLInputElement>(null);
   const [toolSearch, setToolSearch] = useState('');
   const [postponements, setPostponements] = useState<Array<any>>([]);
   const [showPostponements, setShowPostponements] = useState(false);
@@ -634,7 +636,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
   // activity_tool log for this Timestrap session's start/end window.
   const employeeCodeForActivity = (authUser as any)?.employeeCode || (user as any)?.employeeCode;
   const actualWorkedToolsEnabled = !!employeeCodeForActivity && !!date && !!formData.startTime && !!formData.endTime;
-  const { data: actualWorkedToolsData, isFetching: isFetchingActualWorkedTools } = useQuery<{ entries: ActualWorkedToolEntry[] }>({
+  const { data: actualWorkedToolsData, isFetching: isFetchingActualWorkedTools } = useQuery<{ entries: ActualWorkedToolEntry[]; reason?: string | null }>({
     queryKey: ['/api/timeguard/actual-worked-tools', employeeCodeForActivity, date, formData.startTime, formData.endTime],
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -935,6 +937,102 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
     return errs.length === 0;
   };
 
+  // ---- Keyboard shortcuts for the whole form ----
+  //   Alt+ArrowDown / Alt+ArrowUp : next / previous field (works from every field, even dropdowns & number boxes)
+  //   ArrowDown / ArrowUp         : next / previous field from plain text boxes (and from the ends of a textarea)
+  //   Ctrl+Enter (Cmd+Enter)      : save the task
+  //   Tools Used: ArrowDown from the search box -> the list, Up/Down/Home/End inside it, ArrowUp on the first
+  //               tool -> back to the search box, Enter in the search box toggles the first match.
+  // Dropdown lists (Radix) keep their own Up/Down/Enter/Esc handling; their menus are portalled outside the
+  // form, so the contains() check below keeps these shortcuts from touching them.
+  const FORM_FIELD_SELECTOR = 'input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), button[role="combobox"]:not([disabled])';
+
+  const moveFieldFocus = (form: HTMLElement, from: HTMLElement, dir: 1 | -1): boolean => {
+    const fields = Array.from(form.querySelectorAll<HTMLElement>(FORM_FIELD_SELECTOR))
+      .filter((el) => el.offsetParent !== null && el.tabIndex !== -1);
+    const index = fields.indexOf(from);
+    const next = index >= 0 ? fields[index + dir] : undefined;
+    if (!next) return false;
+    next.focus();
+    next.scrollIntoView({ block: 'nearest' });
+    return true;
+  };
+
+  const handleFormKeyDownCapture = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    const form = e.currentTarget;
+    const target = e.target as HTMLElement;
+    if (!form.contains(target)) return;
+
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      form.requestSubmit();
+      return;
+    }
+    // Captured first so it also wins over a dropdown trigger's own ArrowDown "open" behaviour.
+    if (e.altKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      if (moveFieldFocus(form, target, e.key === 'ArrowDown' ? 1 : -1)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }
+  };
+
+  const handleFormKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    const form = e.currentTarget;
+    const target = e.target as HTMLElement;
+    if (e.defaultPrevented || !form.contains(target)) return;
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+
+    // Tools Used list
+    if (target.hasAttribute('data-tool-item')) {
+      const items = Array.from(form.querySelectorAll<HTMLElement>('[data-tool-item]'));
+      const i = items.indexOf(target);
+      let nextEl: HTMLElement | undefined;
+      if (e.key === 'ArrowDown') nextEl = items[i + 1] ?? items[i];
+      else if (e.key === 'ArrowUp') nextEl = i > 0 ? items[i - 1] : form.querySelector<HTMLElement>('[data-testid="input-tool-search"]') ?? undefined;
+      else if (e.key === 'Home') nextEl = items[0];
+      else if (e.key === 'End') nextEl = items[items.length - 1];
+      if (nextEl) {
+        e.preventDefault();
+        nextEl.focus();
+        nextEl.scrollIntoView({ block: 'nearest' });
+      }
+      return;
+    }
+
+    const isToolSearch = target.getAttribute('data-testid') === 'input-tool-search';
+    if (isToolSearch) {
+      const matches = TOOLS_LIST.filter((t) => t.toLowerCase().includes(toolSearch.trim().toLowerCase()));
+      if (e.key === 'ArrowDown') {
+        const first = form.querySelector<HTMLElement>('[data-tool-item]');
+        if (first) { e.preventDefault(); first.focus(); }
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault(); // do not submit the whole form from the tool search box
+        if (matches[0]) toggleTool(matches[0]);
+        return;
+      }
+    }
+
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const dir = e.key === 'ArrowDown' ? 1 : -1;
+
+    if (target instanceof HTMLTextAreaElement) {
+      // Only leave a textarea when the caret cannot move any further in that direction.
+      const atStart = target.selectionStart === 0 && target.selectionEnd === 0;
+      const atEnd = target.selectionStart === target.value.length && target.selectionEnd === target.value.length;
+      if ((dir === -1 && !atStart) || (dir === 1 && !atEnd)) return;
+    } else if (target instanceof HTMLInputElement) {
+      // Number / time / date boxes use the arrows to change their value — leave those alone (use Alt+Arrow).
+      if (target.type && !['text', 'search', 'email', 'tel', 'url'].includes(target.type)) return;
+    } else {
+      return; // dropdown triggers etc.: their own arrow behaviour stays
+    }
+    if (moveFieldFocus(form, target, dir)) e.preventDefault();
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
@@ -1125,9 +1223,10 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
               isFetching={isFetchingActualWorkedTools}
               timeline={activityTimeline}
               aggregated={aggregatedWorkedTools}
+              emptyReason={actualWorkedToolsData?.reason ?? null}
             />
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-2">
+            <form onSubmit={handleSubmit} onKeyDownCapture={handleFormKeyDownCapture} onKeyDown={handleFormKeyDown} className="space-y-2">
               {errors.length > 0 && (
                 <div className="p-3 rounded-md bg-red-500/10 border border-red-500/20">
                   {errors.map((error, i) => (
@@ -1251,6 +1350,16 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                 <div className="space-y-1">
                   <Label htmlFor="project" className="text-blue-100 tracker-form-label">Project *</Label>
                   <Select
+                    open={isProjectSelectOpen}
+                    onOpenChange={(open) => {
+                      setIsProjectSelectOpen(open);
+                      if (open) {
+                        // Radix focuses the list on open; put the cursor in the search box so typing filters at once.
+                        setTimeout(() => projectSearchInputRef.current?.focus(), 0);
+                      } else {
+                        setProjectSearch('');
+                      }
+                    }}
                     value={formData.project}
                     onValueChange={(v) => {
                       setFormData({ ...formData, project: v, title: '', subTask: '' });
@@ -1266,15 +1375,23 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                     <SelectTrigger className="tracker-form-input" data-testid="select-project" data-radix-select-trigger>
                       <SelectValue placeholder="Select a project" />
                     </SelectTrigger>
-                    <SelectContent searchable={false} className={`max-h-[300px] tracker-select-content ${selectMenuScaleClass}`}>
+                    <SelectContent
+                      searchable={false}
+                      side="bottom"
+                      align="start"
+                      avoidCollisions={false}
+                      className={`max-h-[300px] tracker-select-content ${selectMenuScaleClass}`}
+                    >
                       <div className="flex items-center px-3 pb-2 pt-1 border-b border-blue-500/10">
                         <Search className="w-3.5 h-3.5 text-blue-400/50 mr-2" />
                         <input
                           className="flex-1 bg-transparent border-none outline-none text-xs text-white placeholder:text-blue-400/30"
                           placeholder="Search projects..."
+                          ref={projectSearchInputRef}
+                          data-select-search
                           value={projectSearch}
                           onChange={(e) => setProjectSearch(e.target.value)}
-                          onKeyDown={(e) => e.stopPropagation()}
+                          onKeyDown={handleSelectSearchKeyDown}
                         />
                       </div>
                       {/* Ensure prefilled project is visible even if not in fetched list */}
@@ -1425,6 +1542,24 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                 </div>
               </div>
 
+              {/* Not tied to the Description field: Description is hidden unless the admin rules require it,
+                  but the suggestion also fills Achievements / Quantify, so the button must always be reachable
+                  (new entry AND edit) whenever the global TimeGuard Suggestions switch is on. */}
+              {timeguardSuggestionsEnabled && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSuggestWorkSummary}
+                    disabled={isSuggestingDescription}
+                    className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                    data-testid="button-suggest-description"
+                    title="Fills Description, Achievements, and Quantify Your Result from TimeGuard's tracked activity"
+                  >
+                    {isSuggestingDescription ? 'Analyzing TimeGuard activity…' : '✨ Suggest from TimeGuard'}
+                  </button>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <Label htmlFor="quantify" className="text-blue-100 tracker-form-label">Quantify Your Result *</Label>
@@ -1475,6 +1610,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                         <button
                           type="button"
                           key={tool}
+                          data-tool-item
                           onClick={() => toggleTool(tool)}
                           className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs ${formData.toolsUsed.includes(tool)
                             ? 'bg-blue-500/20 text-blue-300'
@@ -1489,8 +1625,8 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                       {TOOLS_LIST.filter(tool =>
                         tool.toLowerCase().includes(toolSearch.trim().toLowerCase())
                       ).length === 0 && (
-                        <p className="p-2 text-center text-xs text-slate-400">No tools found.</p>
-                      )}
+                          <p className="p-2 text-center text-xs text-slate-400">No tools found.</p>
+                        )}
                     </div>
                   </div>
                   {formData.toolsUsed.length > 0 && (
@@ -1584,18 +1720,6 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                     <Label htmlFor="description" className="text-blue-100 tracker-form-label">
                       Description <span className="text-blue-400/60 text-xs">(optional, min 10 words)</span>
                     </Label>
-                    {timeguardSuggestionsEnabled && (
-                      <button
-                        type="button"
-                        onClick={handleSuggestWorkSummary}
-                        disabled={isSuggestingDescription}
-                        className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                        data-testid="button-suggest-description"
-                        title="Fills Description, Achievements, and Quantify Your Result from TimeGuard's tracked activity"
-                      >
-                        {isSuggestingDescription ? 'Analyzing TimeGuard activity…' : '✨ Suggest from TimeGuard'}
-                      </button>
-                    )}
                   </div>
                   <Textarea
                     id="description"
@@ -1715,7 +1839,9 @@ function ActivityTimelinePanel({
   isFetching,
   timeline,
   aggregated,
+  emptyReason,
 }: {
+  emptyReason?: string | null;
   enabled: boolean;
   isFetching: boolean;
   timeline: Array<{
@@ -1759,9 +1885,16 @@ function ActivityTimelinePanel({
             Loading TimeGuard activity…
           </p>
         ) : timeline.length === 0 ? (
-          <p className="text-xs text-blue-300/60 italic mt-2" data-testid="text-actual-worked-tools-empty">
-            No TimeGuard activity recorded for this time period.
-          </p>
+          <div className="mt-2 space-y-1">
+            <p className="text-xs text-blue-300/60 italic" data-testid="text-actual-worked-tools-empty">
+              No TimeGuard activity recorded for this time period.
+            </p>
+            {emptyReason && (
+              <p className="text-xs text-amber-300/90" data-testid="text-actual-worked-tools-reason">
+                Reason: {emptyReason}
+              </p>
+            )}
+          </div>
         ) : (
           <div className="mt-3 space-y-2" data-testid="timeline-actual-worked-tools">
             {timeline.map((block, idx) => (

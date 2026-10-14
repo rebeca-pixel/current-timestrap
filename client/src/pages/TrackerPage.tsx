@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { validateWithRules } from '@shared/timesheetValidation';
+import { evaluateSameDaySubmission, detectBrowserTimeZone, SAME_DAY_SUBMIT_CUTOFF_LABEL } from '@shared/submissionRestriction';
 import { useValidationRules } from '@/hooks/useValidationRules';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { format, addDays, isAfter, startOfDay } from 'date-fns';
@@ -414,6 +415,20 @@ export default function TrackerPage({ user }: TrackerPageProps) {
     },
   });
 
+  // ---- Same-day submission restriction (today's timesheet only after 5 PM local time) ----
+  // On/off is a global admin switch on the Users page (default ON); the rule itself is the shared one.
+  const { data: sameDayPref } = useQuery<{ enabled: boolean }>({
+    queryKey: ['/api/settings/same-day-submit-restriction'],
+  });
+  const sameDayRestrictionEnabled = sameDayPref?.enabled !== false; // default ON until the server says otherwise
+
+  // Re-evaluate every 30s so the Submit button unlocks by itself at 5:00 PM.
+  const [clockTick, setClockTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setClockTick(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   // Filter entries for selected date, but ALWAYS include rejected entries from any date
   const todaysEntries = serverEntries.filter(e => e.date === formattedDate || e.status === 'rejected');
 
@@ -735,6 +750,16 @@ export default function TrackerPage({ user }: TrackerPageProps) {
   console.log(`[LMS Debug] Code: ${user?.employeeCode}, Date: ${formattedDate}, Hours: ${lmsHours}, Minutes: ${lmsMinutes}, Total: ${totalCombinedMinutes}`);
 
   const alreadySubmittedToday = !!dailySubmission;
+  // Blocked = the selected date is today (browser time zone), it is before 5 PM, the check is ON and the day
+  // has not been submitted yet. Yesterday / older dates and already-submitted days are never blocked.
+  const sameDayCheck = evaluateSameDaySubmission({
+    workDate: formattedDate,
+    now: new Date(clockTick),
+    timeZone: detectBrowserTimeZone(),
+    enabled: sameDayRestrictionEnabled,
+    alreadySubmitted: alreadySubmittedToday,
+  });
+  const isSameDayBlocked = sameDayCheck.blocked;
   const needsPlan = formattedDate === currentToday && !dailyPlanStatus?.submitted;
   const isOnLeaveToday = !!leaveStatusData?.hasLeave; // true only for Full Day leave
   const hasPartialExemption = !!(leaveStatusData?.hasHalfDayLeave || leaveStatusData?.hasHalfDayOD || leaveStatusData?.hasHourlyOD || leaveStatusData?.hasPermission);
@@ -812,7 +837,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
   const hasMissingProgressOrQuantify = tasksMissingProgressOrQuantify.length > 0;
 
   const canSubmit =
-    !isSubmitting && !hasMissingProgressOrQuantify && (
+    !isSubmitting && !isSameDayBlocked && !hasMissingProgressOrQuantify && (
       settings.forceAllowFinalSubmit ||
       (
         !needsPlan &&
@@ -829,6 +854,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
   // blocker is visible instead of a silently greyed-out button.
   const submitBlockReason = useMemo(() => {
     if (isSubmitting) return null;
+    if (isSameDayBlocked) return sameDayCheck.message ?? null;
     if (isOnLeaveToday) return leaveStatusData?.status === 'Pending'
       ? 'You have a pending leave request today, so the timesheet for this date is blocked.'
       : 'You are on leave today, so the timesheet for this date is blocked.';
@@ -849,7 +875,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       return `Minimum 8 hours required to Final Submit. You need ${formatDuration(remaining)} more logged (${formatDuration(totalCombinedMinutes)} / 8h 00m logged).`;
     }
     return null;
-  }, [isSubmitting, isOnLeaveToday, leaveStatusData?.status, needsPlan, todaysTasksOnly, hasInvalidTasks, invalidTasksDetails, hasMissingProgressOrQuantify, tasksMissingProgressOrQuantify, hasEnoughHours, settings.forceAllowFinalSubmit, totalCombinedMinutes]);
+  }, [isSubmitting, isSameDayBlocked, sameDayCheck.message, isOnLeaveToday, leaveStatusData?.status, needsPlan, todaysTasksOnly, hasInvalidTasks, invalidTasksDetails, hasMissingProgressOrQuantify, tasksMissingProgressOrQuantify, hasEnoughHours, settings.forceAllowFinalSubmit, totalCombinedMinutes]);
 
 
   const handleSaveTask = async (taskData: Task) => {
@@ -1024,6 +1050,16 @@ export default function TrackerPage({ user }: TrackerPageProps) {
   const handleFinalSubmit = async () => {
     if (isSubmitting) return;
 
+    // Checked first, before any entry is created, so a blocked attempt leaves no partial/duplicate rows behind.
+    if (isSameDayBlocked) {
+      toast({
+        title: "Today's Timesheet Can't Be Submitted Yet",
+        description: sameDayCheck.message,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (!canSubmit) {
       if (submitBlockReason) {
         toast({
@@ -1110,6 +1146,13 @@ export default function TrackerPage({ user }: TrackerPageProps) {
         ));
       }
 
+      // The pending tasks now exist on the server. Drop the local copies right away so that, if Step 2 fails and
+      // the employee retries, they are not created a second time (duplicate entries).
+      if (pendingTasks.length > 0) {
+        updatePendingTasks([]);
+        queryClient.invalidateQueries({ queryKey: ['/api/time-entries/employee', user.id] });
+      }
+
       // Step 2: Finalize the timesheet for the day (also sends the daily summary email).
       // This endpoint marks all today's draft entries as pending — if it fails (e.g. the
       // 8-hour minimum isn't met), the submission has NOT gone through, so we must not
@@ -1119,7 +1162,12 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       try {
         await apiRequest('POST', `/api/time-entries/submit-daily/${user.id}/${formattedDate}`);
       } catch (finalizeError: any) {
-        const message = finalizeError?.message || 'Failed to finalize timesheet. Please try again.';
+        // apiRequest errors look like `403: {"error":"..."}` — show only the human-readable part.
+        let message = finalizeError?.message || 'Failed to finalize timesheet. Please try again.';
+        try {
+          const parsed = JSON.parse(String(message).replace(/^\d+:\s*/, ''));
+          message = parsed?.message || parsed?.error || message;
+        } catch { /* not JSON — keep the raw message */ }
         toast({
           title: "Submission Failed",
           description: message,

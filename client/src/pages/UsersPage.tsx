@@ -192,6 +192,35 @@ export default function UsersPage({ user }: UsersPageProps) {
     autoRejectMutation.mutate(!autoRejectEnabled);
   };
 
+  // Global same-day submission restriction (today's timesheet only after 5:00 PM local time)
+  const { data: sameDaySetting, isLoading: loadingSameDaySetting } = useQuery<{ enabled: boolean }>({
+    queryKey: ['/api/settings/same-day-submit-restriction'],
+  });
+  const sameDayRestrictionEnabled = sameDaySetting?.enabled !== false;
+
+  const sameDayMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const response = await apiRequest('PATCH', '/api/settings/same-day-submit-restriction', { enabled });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/settings/same-day-submit-restriction'] });
+      toast({
+        title: data.enabled ? 'Same-day restriction enabled' : 'Same-day restriction disabled',
+        description: data.enabled
+          ? "Today's timesheet can only be submitted after 5:00 PM (local time)."
+          : "Today's timesheet can now be submitted at any time.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Failed to update setting',
+        description: error.message || 'Could not update the same-day submission setting.',
+        variant: 'destructive',
+      });
+    },
+  });
+
   const filteredUsers = employees.filter(u =>
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.employeeCode.toLowerCase().includes(searchQuery.toLowerCase())
@@ -308,6 +337,23 @@ export default function UsersPage({ user }: UsersPageProps) {
               disabled={loadingTimeguardSetting || timeguardSuggestionsMutation.isPending}
               onCheckedChange={handleToggleTimeguardSuggestions}
               data-testid="switch-timeguard-suggestions"
+            />
+          </div>
+        </Card>
+
+        <Card className="bg-slate-800/50 border-blue-500/20 p-4" data-testid="card-same-day-submit-setting">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-white">Same-day Submission After 5 PM</p>
+              <p className="text-xs text-blue-200/60">
+                When enabled, today's timesheet can only be submitted after 5:00 PM (employee's local time), so yesterday's timesheet isn't submitted as today's by mistake. Yesterday and older dates are never affected. When disabled, today's timesheet can be submitted at any time.
+              </p>
+            </div>
+            <Switch
+              checked={sameDayRestrictionEnabled}
+              disabled={loadingSameDaySetting || sameDayMutation.isPending}
+              onCheckedChange={() => sameDayMutation.mutate(!sameDayRestrictionEnabled)}
+              data-testid="switch-same-day-submit"
             />
           </div>
         </Card>

@@ -8,7 +8,7 @@ import path from "path";   // ✅ KEEP THIS
 import { pool } from "./db";
 import { db } from "./db";
 import { and, eq, isNull, or } from "drizzle-orm";
-import { validateToolUsage, getToolActivitySummary, getActualWorkedTools } from "./toolUsageValidation";
+import { validateToolUsage, getToolActivitySummary, getActualWorkedTools, diagnoseTimeGuard } from "./toolUsageValidation";
 import { getDayActivityMatches } from "./activityMatching";
 import { generateTimesheetForDay, submitTimesheetForDay } from "./timesheetGenerator";
 import { suggestWorkSummaryFromTimeGuard } from "./aiActivitySummary";
@@ -28,6 +28,7 @@ import { registerVoiceRoutes } from "./voice";
 import { format, parseISO, eachDayOfInterval, isSameDay } from "date-fns";
 import { sendEmail } from "./email";
 import { validateWithRules, normalizeValidationRules, DEFAULT_VALIDATION_RULES, isWithinSubmissionWindow, type ValidationRules } from "@shared/timesheetValidation";
+import { evaluateSameDaySubmission, resolveTimeZone, SAME_DAY_SUBMIT_CUTOFF_HOUR } from "@shared/submissionRestriction";
 import bcrypt from "bcryptjs";
 import { registerGoogleCalendarRoutes } from "./googleCalendar";
 
@@ -955,6 +956,19 @@ export async function registerRoutes(
   // Returns every TimeGuard activity/tool log row (app + website activity)
   // whose window overlaps the given Timestrap session's [startTime, endTime).
   // Pure read/display — no manual entry, nothing derived or invented.
+  // Troubleshooting: why is the Activity Timeline / TimeGuard suggestion empty? Metadata only.
+  // e.g. /api/timeguard/diagnose?employeeCode=E0001&date=2026-10-14&startTime=09:45&endTime=10:45
+  app.get("/api/timeguard/diagnose", async (req, res) => {
+    try {
+      const { employeeCode, date, startTime, endTime } = req.query as Record<string, string>;
+      if (!employeeCode) return res.status(400).json({ error: "employeeCode is required" });
+      res.json(await diagnoseTimeGuard(employeeCode, date, startTime, endTime));
+    } catch (error) {
+      console.error("TimeGuard diagnose error:", error);
+      res.status(500).json({ error: "Diagnose failed" });
+    }
+  });
+
   app.get("/api/timeguard/actual-worked-tools", async (req, res) => {
     try {
       const { employeeCode, date, startTime, endTime } = req.query as Record<string, string>;
@@ -962,6 +976,17 @@ export async function registerRoutes(
         return res.status(400).json({ error: "employeeCode, date, startTime, and endTime are required" });
       }
       const entries = await getActualWorkedTools(employeeCode, date, startTime, endTime);
+      if (entries.length === 0) {
+        // Empty timeline: find out WHY (wrong DB, employee not in TimeGuard, nothing logged in the window...)
+        // so the screen can say so instead of just "no activity". Metadata only; runs only when empty.
+        let reason: string | null = null;
+        try {
+          const diag = await diagnoseTimeGuard(employeeCode, date, startTime, endTime);
+          reason = diag.problems?.[0] ?? null;
+          console.warn(`[TIMEGUARD] Empty timeline for ${employeeCode} ${date} ${startTime}-${endTime}: ${diag.problems?.join(' | ')}`);
+        } catch { /* diagnostics are best-effort */ }
+        return res.json({ entries, reason });
+      }
       res.json({ entries });
     } catch (error) {
       console.error("Get actual worked tools error:", error);
@@ -1016,6 +1041,19 @@ export async function registerRoutes(
       const { employeeCode, date } = req.body;
       if (!employeeCode || !date) {
         return res.status(400).json({ error: "employeeCode and date are required" });
+      }
+      const submitter = await storage.getEmployeeByCode(employeeCode);
+      if (submitter) {
+        const sameDay = await checkSameDaySubmission(req, submitter.id, date);
+        if (sameDay.blocked) {
+          return res.status(403).json({
+            error: sameDay.message,
+            message: sameDay.message,
+            code: sameDay.code,
+            today: sameDay.today,
+            timeZone: sameDay.timeZone,
+          });
+        }
       }
       const result = await submitTimesheetForDay(employeeCode, date);
       res.json(result);
@@ -2615,6 +2653,20 @@ export async function registerRoutes(
     try {
       const { employeeId, date } = req.params;
 
+      // Same-day restriction: today's timesheet can only be submitted after 5 PM local time (unless the
+      // employee switched the check off). Past dates and days that were already submitted are untouched.
+      // Runs before anything is read or written so a blocked attempt changes nothing.
+      const sameDay = await checkSameDaySubmission(req, employeeId, date);
+      if (sameDay.blocked) {
+        return res.status(403).json({
+          error: sameDay.message,
+          message: sameDay.message,
+          code: sameDay.code,
+          today: sameDay.today,
+          timeZone: sameDay.timeZone,
+        });
+      }
+
       // fetch every entry for the user on the requested date
       const entries = await storage.getTimeEntriesByEmployeeAndDate(employeeId, date);
       if (entries.length === 0) {
@@ -3430,6 +3482,35 @@ export async function registerRoutes(
       console.error('Failed to write settings', e);
       return false;
     }
+  }
+
+  // ---- Same-day submission restriction (today's timesheet only after 5 PM local time) ----
+  // One global switch, managed on the Users page. Absent => ON.
+  function isSameDayRestrictionEnabled(settings: any): boolean {
+    return settings?.sameDaySubmitRestrictionEnabled !== false;
+  }
+
+  // "Local time" is the employee's: the browser sends its IANA zone (X-Client-Timezone header); fall back to
+  // an admin/env configured zone, then Asia/Kolkata. Never the server's own zone (usually UTC).
+  function requestTimeZone(req: any, settings: any): string {
+    return resolveTimeZone(
+      req.get?.('x-client-timezone'),
+      req.body?.timeZone,
+      req.query?.timeZone,
+      settings?.submissionTimeZone,
+      process.env.TIMESHEET_TIMEZONE
+    );
+  }
+
+  async function checkSameDaySubmission(req: any, employeeId: string, date: string) {
+    const settings = await readSettings();
+    const alreadySubmitted = !!(await storage.getDailySubmissionByDate(employeeId, date));
+    return evaluateSameDaySubmission({
+      workDate: date,
+      timeZone: requestTimeZone(req, settings),
+      enabled: isSameDayRestrictionEnabled(settings),
+      alreadySubmitted,
+    });
   }
   app.get("/api/tasks", async (req, res) => {
     try {
@@ -5066,6 +5147,38 @@ export async function registerRoutes(
       res.json({ success: true, settings });
     } catch (err) {
       console.error('[SETTINGS] Failed to toggle late plan override:', err);
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // Same-day submission restriction (global switch on the Users page).
+  app.get('/api/settings/same-day-submit-restriction', async (req, res) => {
+    try {
+      const settings = await readSettings();
+      res.json({
+        enabled: isSameDayRestrictionEnabled(settings),
+        cutoffHour: SAME_DAY_SUBMIT_CUTOFF_HOUR,
+        timeZone: requestTimeZone(req, settings),
+      });
+    } catch (err) {
+      console.error('[SETTINGS] Failed to read same-day restriction:', err);
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  app.patch('/api/settings/same-day-submit-restriction', async (req, res) => {
+    try {
+      if (typeof req.body?.enabled !== 'boolean') {
+        return res.status(400).json({ error: 'enabled must be true or false' });
+      }
+      const settings = await readSettings();
+      settings.sameDaySubmitRestrictionEnabled = req.body.enabled;
+      const success = await writeSettings(settings);
+      if (!success) return res.status(500).json({ error: 'Failed to write settings' });
+      broadcast('settings_updated', { sameDaySubmitRestrictionEnabled: req.body.enabled });
+      res.json({ enabled: req.body.enabled });
+    } catch (err) {
+      console.error('[SETTINGS] Failed to update same-day restriction:', err);
       res.status(500).json({ error: 'Server error' });
     }
   });

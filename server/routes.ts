@@ -555,9 +555,9 @@ export async function registerRoutes(
     ws.on("close", () => clients.delete(ws));
   });
 
-  // Seed managers and default employees on startup
+  // Seed managers on initial setup if table is empty (employee seeding disabled so manual DB deletions stay permanent)
   await storage.seedManagers();
-  await storage.seedDefaultEmployees();
+  // await storage.seedDefaultEmployees();
 
   // Create Phase 5 tables if they don't exist
   await pool.query(`

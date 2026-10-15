@@ -643,26 +643,18 @@ export class DatabaseStorage implements IStorage {
       ];
 
       const existingEmployees = await this.getEmployees();
-      const existingCodes = new Set(existingEmployees.map(e => e.employeeCode));
+      if (existingEmployees.length > 0) {
+        console.log("✅ Employees table already populated. Skipping employee seeding.");
+        return;
+      }
 
       for (const emp of defaultEmployees) {
-        if (!existingCodes.has(emp.employeeCode)) {
-          await this.createEmployee(emp);
-          console.log(`Created missing employee: ${emp.employeeCode} (${emp.name})`);
-        } else {
-          // Correct any known name typos for existing records
-          const existing = existingEmployees.find(e => e.employeeCode === emp.employeeCode);
-          if (existing && existing.name !== emp.name) {
-            await db.update(employees)
-              .set({ name: emp.name })
-              .where(eq(employees.employeeCode, emp.employeeCode));
-            console.log(`Updated name for ${emp.employeeCode}: "${existing.name}" → "${emp.name}"`);
-          }
-        }
+        await this.createEmployee(emp);
+        console.log(`Created default employee: ${emp.employeeCode} (${emp.name})`);
       }
 
       await this.syncAllPasswords();
-      console.log("✅ Default employees seeded/verified successfully.");
+      console.log("✅ Default employees seeded successfully.");
     } catch (error) {
       console.error("❌ Error seeding default employees:", error);
     }

@@ -140,12 +140,12 @@ async function getLeaveStatusForDate(employeeCode: string, date: string) {
   }
 
   try {
-    const { lmsPool } = await import('./lmsSupabase');
+    const { lmsPool, toTimeString, computeHoursBetween } = await import('./lmsSupabase');
 
     // 1. Fetch leaves and ODs (Approved & Pending) interpreted in IST
     const leaveResult = await lmsPool.query(`
       SELECT id, user_id, leave_type, leave_duration_type, status, start_date, end_date,
-             od_from_time, od_to_time
+             od_from_time, od_to_time, from_time, to_time
       FROM leaves
       WHERE user_id = $1
         AND status IN ('Approved', 'Pending')
@@ -158,7 +158,7 @@ async function getLeaveStatusForDate(employeeCode: string, date: string) {
     let permRows: any[] = [];
     try {
       const permResult = await lmsPool.query(`
-        SELECT id, user_id, total_hours, status, permission_date, permission_type
+        SELECT id, user_id, total_hours, status, permission_date, permission_type, from_time, to_time
         FROM permissions
         WHERE user_id = $1
           AND status IN ('Approved', 'Pending')
@@ -171,39 +171,6 @@ async function getLeaveStatusForDate(employeeCode: string, date: string) {
     }
 
     const leaveRows = leaveResult.rows || [];
-
-    const toTimeString = (t: any): string | null => {
-      if (!t) return null;
-      const str = String(t);
-      const match = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
-      if (match) {
-        const h = match[1].padStart(2, '0');
-        const m = match[2];
-        const s = match[3] || '00';
-        return `${h}:${m}:${s}`;
-      }
-      return null;
-    };
-
-    const computeHoursBetween = (fromTime: any, toTime: any): number => {
-      if (!fromTime || !toTime) return 0;
-      try {
-        const toMinutes = (t: string): number => {
-          const parts = t.split(':');
-          const h = parseInt(parts[0] || '0', 10);
-          const m = parseInt(parts[1] || '0', 10);
-          const s = parseInt(parts[2] || '0', 10);
-          return h * 60 + m + s / 60;
-        };
-        let from = toMinutes(String(fromTime));
-        let to = toMinutes(String(toTime));
-        if (Number.isNaN(from) || Number.isNaN(to)) return 0;
-        if (to < from) to += 24 * 60;
-        return (to - from) / 60;
-      } catch {
-        return 0;
-      }
-    };
 
     let hasFullDayLeave = false;
     let hasHalfDayLeave = false;
@@ -227,8 +194,10 @@ async function getLeaveStatusForDate(employeeCode: string, date: string) {
         if (!odStatus) odStatus = status;
         else if (status === 'Pending') odStatus = 'Pending';
 
-        const explicitFrom = toTimeString(row.od_from_time);
-        const explicitTo = toTimeString(row.od_to_time);
+        const rawFrom = row.od_from_time || row.from_time;
+        const rawTo = row.od_to_time || row.to_time;
+        const explicitFrom = toTimeString(rawFrom);
+        const explicitTo = toTimeString(rawTo);
 
         if (dur === 'Full Day') {
           hasFullDayOD = true;
@@ -245,7 +214,7 @@ async function getLeaveStatusForDate(employeeCode: string, date: string) {
           }
         } else if (dur === 'Hourly') {
           hasHourlyOD = true;
-          const h = computeHoursBetween(row.od_from_time, row.od_to_time);
+          const h = computeHoursBetween(rawFrom, rawTo);
           odHours += h;
           if (explicitFrom && explicitTo) {
             odWindows.push({ from: explicitFrom, to: explicitTo, isFullDay: false, durationType: 'Hourly' });
@@ -281,7 +250,8 @@ async function getLeaveStatusForDate(employeeCode: string, date: string) {
     let permissionStatus: string | null = null;
     const hasPermission = permRows.length > 0;
     for (const p of permRows) {
-      permissionHours += parseFloat(p.total_hours) || 0;
+      const h = parseFloat(p.total_hours) || (p.from_time && p.to_time ? computeHoursBetween(p.from_time, p.to_time) : 0);
+      permissionHours += h;
       if (!permissionStatus) permissionStatus = p.status;
       else if (p.status === 'Pending') permissionStatus = 'Pending';
     }

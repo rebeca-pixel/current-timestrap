@@ -61,14 +61,41 @@ export const OD_HALF_DAY_WINDOWS = {
 export const OD_FULL_DAY_WINDOW = { from: '00:00:00', to: '23:59:59' } as const;
 
 /**
- * Compute the number of hours between two "time without time zone" values
- * (od_from_time, od_to_time) stored on the LMS leaves table for hourly ODs.
+ * Format a Postgres `time` value ("12:15:00", Date, or "04:00 PM") into "HH:mm:ss".
+ */
+export const toTimeString = (t: any): string | null => {
+  if (!t) return null;
+  const str = String(t).trim();
+  const ampmMatch = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$/i);
+  if (ampmMatch) {
+    let h = parseInt(ampmMatch[1], 10);
+    const m = ampmMatch[2];
+    const s = ampmMatch[3] || '00';
+    const isPM = ampmMatch[4].toUpperCase() === 'PM';
+    if (isPM && h < 12) h += 12;
+    if (!isPM && h === 12) h = 0;
+    return `${String(h).padStart(2, '0')}:${m}:${s}`;
+  }
+  const match = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (match) {
+    const h = match[1].padStart(2, '0');
+    const m = match[2];
+    const s = match[3] || '00';
+    return `${h}:${m}:${s}`;
+  }
+  return null;
+};
+
+/**
+ * Compute the number of hours between two times (supporting strings, times, 12h/24h)
+ * stored on the LMS leaves table for hourly ODs.
  * Returns 0 if inputs are missing or invalid.
  */
-const computeHoursBetween = (fromTime: any, toTime: any): number => {
+export const computeHoursBetween = (fromTime: any, toTime: any): number => {
   if (!fromTime || !toTime) return 0;
   try {
-    // Postgres `time` columns come back as strings like "12:15:00"
+    const fromStr = toTimeString(fromTime) || String(fromTime);
+    const toStr = toTimeString(toTime) || String(toTime);
     const toMinutes = (t: string): number => {
       const parts = t.split(':');
       const h = parseInt(parts[0] || '0', 10);
@@ -76,8 +103,8 @@ const computeHoursBetween = (fromTime: any, toTime: any): number => {
       const s = parseInt(parts[2] || '0', 10);
       return h * 60 + m + s / 60;
     };
-    let from = toMinutes(String(fromTime));
-    let to = toMinutes(String(toTime));
+    let from = toMinutes(fromStr);
+    let to = toMinutes(toStr);
     if (Number.isNaN(from) || Number.isNaN(to)) return 0;
     if (to < from) to += 24 * 60; // overnight OD
     return (to - from) / 60;
@@ -108,11 +135,11 @@ export const getBatchLMSHours = async (startDate: string, endDate: string): Prom
     // 1. Fetch Approved Leaves for all employees in range
     //    Dates are interpreted in IST (Asia/Kolkata) to avoid off-by-one day
     //    caused by UTC conversion of timestamp columns.
-    //    od_from_time / od_to_time are selected so hourly OD entries can be
-    //    converted to hours below.
+    //    od_from_time / od_to_time and from_time / to_time are selected so hourly OD
+    //    entries can be converted to hours below.
     const leaveQuery = `
       SELECT user_id, start_date, end_date, leave_type, leave_duration_type, status,
-             od_from_time, od_to_time
+             od_from_time, od_to_time, from_time, to_time
       FROM leaves
       WHERE status = 'Approved'
         AND (
@@ -128,7 +155,7 @@ export const getBatchLMSHours = async (startDate: string, endDate: string): Prom
     //    `leaves` with leave_type='OD' and is processed above.)
     //    Interpreted in IST to fix the off-by-one day bug.
     const permissionQuery = `
-      SELECT user_id, total_hours, status, permission_date, permission_type
+      SELECT user_id, total_hours, status, permission_date, permission_type, from_time, to_time
       FROM permissions
       WHERE status = 'Approved'
         AND (permission_date AT TIME ZONE 'Asia/Kolkata')::date >= ($1::date)
@@ -152,21 +179,6 @@ export const getBatchLMSHours = async (startDate: string, endDate: string): Prom
           odWindows: []
         };
       }
-    };
-
-    // Format a Postgres `time` value ("12:15:00" or a Date) into "HH:mm:ss".
-    const toTimeString = (t: any): string | null => {
-      if (!t) return null;
-      const str = String(t);
-      // Already "HH:mm:ss" (or "HH:mm")
-      const match = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
-      if (match) {
-        const h = match[1].padStart(2, '0');
-        const m = match[2];
-        const s = match[3] || '00';
-        return `${h}:${m}:${s}`;
-      }
-      return null;
     };
 
     // Process Leaves
@@ -198,7 +210,7 @@ export const getBatchLMSHours = async (startDate: string, endDate: string): Prom
       // - Regular Casual/Sick/Earned leave:
       //     Full Day = 8h, Half Day = 4h
       // - OD (On-Duty):
-      //     Full Day = 8h, Hourly = od_to_time - od_from_time
+      //     Full Day = 8h, Hourly = od_to_time - od_from_time (or to_time - from_time)
       //     OD hours are credited to `odHours` (separate from `permissionHours`)
       //     and ALSO added to `totalLMSHours` so they count toward the 8-hour
       //     day requirement. The row is still pushed into details.leaves.
@@ -212,17 +224,17 @@ export const getBatchLMSHours = async (startDate: string, endDate: string): Prom
       let odWindow: ODWindow | null = null;
 
       if (isOD) {
-        const explicitFrom = toTimeString(row.od_from_time);
-        const explicitTo = toTimeString(row.od_to_time);
+        const rawFrom = row.od_from_time || row.from_time;
+        const rawTo = row.od_to_time || row.to_time;
+        const explicitFrom = toTimeString(rawFrom);
+        const explicitTo = toTimeString(rawTo);
 
         if (dur === 'Full Day') {
           hours = 8;
           odWindow = { ...OD_FULL_DAY_WINDOW, isFullDay: true, durationType: 'Full Day' };
         } else if (dur === 'Half Day') {
           hours = 4;
-          // Prefer the LMS's own od_from_time/od_to_time if it recorded one
-          // for this half-day OD row; otherwise default to the first half of
-          // the shift (10:00 AM – 2:00 PM). See OD_HALF_DAY_WINDOWS above.
+          // Prefer the LMS's own od_from_time/od_to_time or from_time/to_time if recorded
           if (explicitFrom && explicitTo) {
             hours = computeHoursBetween(explicitFrom, explicitTo) || 4;
             odWindow = { from: explicitFrom, to: explicitTo, isFullDay: false, durationType: 'Half Day' };
@@ -230,7 +242,7 @@ export const getBatchLMSHours = async (startDate: string, endDate: string): Prom
             odWindow = { ...OD_HALF_DAY_WINDOWS.firstHalf, isFullDay: false, durationType: 'Half Day' };
           }
         } else if (dur === 'Hourly') {
-          hours = computeHoursBetween(row.od_from_time, row.od_to_time);
+          hours = computeHoursBetween(rawFrom, rawTo);
           if (explicitFrom && explicitTo) {
             odWindow = { from: explicitFrom, to: explicitTo, isFullDay: false, durationType: 'Hourly' };
           }
@@ -273,7 +285,7 @@ export const getBatchLMSHours = async (startDate: string, endDate: string): Prom
 
       if (dStr >= startDate && dStr <= endDate) {
         ensurePath(empCode, dStr);
-        const hours = parseFloat(row.total_hours) || 0;
+        const hours = parseFloat(row.total_hours) || (row.from_time && row.to_time ? computeHoursBetween(row.from_time, row.to_time) : 0);
         result[empCode][dStr].permissionHours += hours;
         result[empCode][dStr].totalLMSHours += hours;
         result[empCode][dStr].details.permissions.push(row);

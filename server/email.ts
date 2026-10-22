@@ -821,6 +821,8 @@ export async function sendDeviationNotificationEmail(data: {
   const { employeeName, employeeCode, taskName, projectName, reason } = data;
   const date = new Date().toLocaleDateString('en-IN');
   const subject = `[Deviation Approval Required] ${employeeName} (${employeeCode}) - ${projectName}`;
+  const appUrl = (process.env.APP_URL || 'https://effilynx.in').trim().replace(/\/+$/, '');
+  const approvalUrl = `${appUrl}/approvals?tab=dailyPlans`;
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
@@ -836,7 +838,7 @@ export async function sendDeviationNotificationEmail(data: {
       </div>
       <p style="margin-top: 20px;">This task was not part of the initial "Plan for the Day" and requires your approval.</p>
       <div style="margin-top: 30px; text-align: center;">
-        <a href="${process.env.APP_URL || 'http://localhost:5000'}/approvals"
+        <a href="${approvalUrl}"
            style="background-color: #2563eb; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">
            Review in Approval Page →
         </a>

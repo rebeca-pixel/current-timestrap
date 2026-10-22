@@ -121,7 +121,9 @@ export default function ApprovalPage({ user }: { user: User }) {
   const [onHoldReason, setOnHoldReason] = useState('');
   const [onHoldDialogOpen, setOnHoldDialogOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-  const [currentTab, setCurrentTab] = useState('timesheets');
+  const [currentTab, setCurrentTab] = useState(() =>
+    new URLSearchParams(window.location.search).get('tab') === 'dailyPlans' ? 'dailyPlans' : 'timesheets'
+  );
   const [siteReportDetailOpen, setSiteReportDetailOpen] = useState(false);
   const [siteReportDetail, setSiteReportDetail] = useState<any>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -673,7 +675,7 @@ export default function ApprovalPage({ user }: { user: User }) {
 
       </>)}
 
-      <Tabs defaultValue="timesheets" onValueChange={setCurrentTab} className="w-full">
+      <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
         <TabsList className={`bg-slate-900 border border-blue-500/10 p-1 mb-4 h-11 w-full ${user.role === 'admin' ? 'max-w-2xl' : 'max-w-md'}`}>
           <TabsTrigger value="timesheets" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white flex-1 text-xs gap-2">
             <Clock className="w-4 h-4" />

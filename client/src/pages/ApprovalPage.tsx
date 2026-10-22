@@ -124,6 +124,7 @@ export default function ApprovalPage({ user }: { user: User }) {
   const [currentTab, setCurrentTab] = useState(() =>
     new URLSearchParams(window.location.search).get('tab') === 'dailyPlans' ? 'dailyPlans' : 'timesheets'
   );
+  const deviationTaskId = new URLSearchParams(window.location.search).get('deviationTaskId');
   const [siteReportDetailOpen, setSiteReportDetailOpen] = useState(false);
   const [siteReportDetail, setSiteReportDetail] = useState<any>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -162,6 +163,25 @@ export default function ApprovalPage({ user }: { user: User }) {
   const { data: rawDailyPlans = [], isLoading: isPlansLoading, refetch: refetchPlans } = useQuery<any[]>({
     queryKey: ['/api/daily-plans/all'],
   });
+
+  useEffect(() => {
+    if (!deviationTaskId || isPlansLoading) return;
+    const matchingPlan = rawDailyPlans.find(plan =>
+      plan.tasks?.some((task: any) => String(task.id) === deviationTaskId)
+    );
+    if (matchingPlan) {
+      setCurrentTab('dailyPlans');
+      setExpandedPlanId(matchingPlan.id);
+    }
+  }, [deviationTaskId, isPlansLoading, rawDailyPlans]);
+
+  useEffect(() => {
+    if (!deviationTaskId || !expandedPlanId) return;
+    document.getElementById(`deviation-task-${deviationTaskId}`)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    });
+  }, [deviationTaskId, expandedPlanId, rawDailyPlans]);
 
   const pendingPlansCount = useMemo(() =>
     rawDailyPlans.filter(p => p.tasks.some((t: any) => t.isDeviation && t.status === 'pending')).length
@@ -1140,7 +1160,11 @@ export default function ApprovalPage({ user }: { user: User }) {
                               const end = formatPlanTime12h(schedule.endTime || task.endTime);
                               const subtaskName = schedule.subtaskName || task.subtaskName;
                               return (
-                                <div key={task.id} className={`flex items-center justify-between p-3 rounded-xl border ${task.isDeviation ? 'bg-amber-500/5 border-amber-500/20' : 'bg-slate-800/30 border-slate-700/40'}`}>
+                                <div
+                                  key={task.id}
+                                  id={String(task.id) === deviationTaskId ? `deviation-task-${task.id}` : undefined}
+                                  className={`flex items-center justify-between p-3 rounded-xl border ${String(task.id) === deviationTaskId ? 'ring-2 ring-amber-400' : ''} ${task.isDeviation ? 'bg-amber-500/5 border-amber-500/20' : 'bg-slate-800/30 border-slate-700/40'}`}
+                                >
                                   <div>
                                     <div className="flex items-center gap-2 flex-wrap">
                                       <span className="text-sm font-bold text-white">{task.taskName}</span>

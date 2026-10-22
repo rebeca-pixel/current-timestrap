@@ -4615,7 +4615,8 @@ export async function registerRoutes(
           employeeCode: employee?.employeeCode || employeeId,
           taskName,
           projectName,
-          reason
+          reason,
+          deviationTaskId: task.id
         });
         if (emailResult?.success) {
           console.log('[EMAIL] Deviation notification email sent successfully');

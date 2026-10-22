@@ -817,12 +817,13 @@ export async function sendDeviationNotificationEmail(data: {
   taskName: string;
   projectName: string;
   reason: string;
+  deviationTaskId: string;
 }) {
-  const { employeeName, employeeCode, taskName, projectName, reason } = data;
+  const { employeeName, employeeCode, taskName, projectName, reason, deviationTaskId } = data;
   const date = new Date().toLocaleDateString('en-IN');
   const subject = `[Deviation Approval Required] ${employeeName} (${employeeCode}) - ${projectName}`;
   const appUrl = (process.env.APP_URL || 'https://effilynx.in').trim().replace(/\/+$/, '');
-  const approvalUrl = `${appUrl}/approvals?tab=dailyPlans`;
+  const approvalUrl = `${appUrl}/approvals?tab=dailyPlans&deviationTaskId=${encodeURIComponent(deviationTaskId)}`;
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">

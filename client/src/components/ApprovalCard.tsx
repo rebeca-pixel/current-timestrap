@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Check, X, Clock, User, Calendar, ChevronDown, ChevronUp, AlertCircle, FileText, Target, Trophy, HelpCircle, TrendingUp, Hammer } from 'lucide-react';
+import { Check, X, Clock, User, Calendar, ChevronDown, ChevronUp, AlertCircle, FileText, Target, Trophy, Hammer } from 'lucide-react';
 
 interface TaskSummary {
   project: string;
@@ -155,22 +155,6 @@ export default function ApprovalCard({
                         <Trophy className="w-3 h-3" /> Achievements
                       </p>
                       <p className="text-sm text-blue-100/80">{task.achievements}</p>
-                    </div>
-                  </div>
-
-                  {/* Row: Problems & Issues & Scope of Improvements */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-3 bg-slate-800/40 rounded-lg border border-white/5">
-                      <p className="text-[10px] font-bold text-blue-300 mb-2 uppercase flex items-center gap-1">
-                        <HelpCircle className="w-3 h-3" /> Problems & Issues
-                      </p>
-                      <p className="text-sm text-blue-100/80">{task.problemsIssues}</p>
-                    </div>
-                    <div className="p-3 bg-slate-800/40 rounded-lg border border-white/5">
-                      <p className="text-[10px] font-bold text-blue-300 mb-2 uppercase flex items-center gap-1">
-                        <TrendingUp className="w-3 h-3" /> Scope of Improvements
-                      </p>
-                      <p className="text-sm text-blue-100/80">{task.scopeImprovements}</p>
                     </div>
                   </div>
 

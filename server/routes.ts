@@ -5599,5 +5599,40 @@ export async function registerRoutes(
     }
   });
 
+  // ---------- AI rejection suggestion ----------
+  app.post("/api/ai/rejection-suggestion", async (req, res) => {
+    try {
+      const { projectName, taskDescription, keyStep, percentageComplete, employeeName } = req.body;
+
+      const OpenAI = (await import("openai")).default;
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+      const prompt = `You are an HR/project manager writing a professional, constructive timesheet rejection message.
+Generate a concise (2-3 sentences) rejection reason for the following timesheet entry.
+Be specific, professional, and suggest what the employee should correct or clarify when resubmitting.
+
+Employee: ${employeeName || 'Employee'}
+Project: ${projectName || 'N/A'}
+Key Step: ${keyStep || 'N/A'}
+Task: ${taskDescription || 'N/A'}
+Completion: ${percentageComplete ?? 'N/A'}%
+
+Write only the rejection message, no preamble or labels.`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 150,
+        temperature: 0.7,
+      });
+
+      const suggestion = completion.choices[0]?.message?.content?.trim() || "";
+      res.json({ suggestion });
+    } catch (err: any) {
+      console.error("[AI REJECTION SUGGESTION]", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return httpServer;
 }

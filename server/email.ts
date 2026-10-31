@@ -445,7 +445,7 @@ export async function sendApprovalSummaryEmail(data: {
         <div style="padding:30px; background:#1e293b; color:#e2e8f0;">
           <p><strong>Employee:</strong> ${employeeName} (${employeeCode})</p>
           <p><strong>Date:</strong> ${date}</p>
-          ${approverName ? `<p><strong>Approved By:</strong> ${approverName}</p>` : ''}
+
           ${rejectionReason ? `<p><strong>Reason:</strong> ${rejectionReason}</p>` : ''}
           ${taskTable}
         </div>

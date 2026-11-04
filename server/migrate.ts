@@ -18,6 +18,8 @@ export async function runMigrations() {
     `ALTER TABLE site_reports ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending'`,
     // Time Entries
     `ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS key_step TEXT`,
+    // Progress already submitted to PMS before this entry (set only when the existing-progress validation applied)
+    `ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS previous_progress INTEGER`,
     // Daily Plans
     `CREATE TABLE IF NOT EXISTS daily_plans (
       id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),

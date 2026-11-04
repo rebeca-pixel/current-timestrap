@@ -221,6 +221,37 @@ export default function UsersPage({ user }: UsersPageProps) {
     },
   });
 
+  // Weekly Timesheet Submission Lock (default OFF; admin only — the server re-checks the role)
+  const { data: weeklyLockSetting, isLoading: loadingWeeklyLock } = useQuery<{ enabled: boolean }>({
+    queryKey: ['/api/settings/weekly-submission-lock'],
+    staleTime: 0,
+    refetchOnMount: true,
+  });
+  const weeklyLockEnabled = weeklyLockSetting?.enabled === true;
+
+  const weeklyLockMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const response = await apiRequest('PATCH', '/api/settings/weekly-submission-lock', { employeeId: user.id, enabled });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/settings/weekly-submission-lock'] });
+      toast({
+        title: data.enabled ? 'Weekly submission lock enabled' : 'Weekly submission lock disabled',
+        description: data.enabled
+          ? 'Previous weeks (Sunday–Saturday) are now locked from the following Sunday.'
+          : 'Timesheets can be submitted for any date again.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Failed to update setting',
+        description: error?.message || 'Could not update the weekly submission lock.',
+        variant: 'destructive',
+      });
+    },
+  });
+
   const filteredUsers = employees.filter(u =>
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.employeeCode.toLowerCase().includes(searchQuery.toLowerCase())
@@ -357,6 +388,25 @@ export default function UsersPage({ user }: UsersPageProps) {
             />
           </div>
         </Card>
+
+        {user.role === 'admin' && (
+          <Card className="bg-slate-800/50 border-blue-500/20 p-4" data-testid="card-weekly-lock-setting">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-white">Weekly Timesheet Submission Lock</p>
+                <p className="text-xs text-blue-200/60">
+                  When enabled, employees can submit any day of the current week (Sunday–Saturday), including missed days. From the following Sunday the previous week is locked and can no longer be submitted or modified. When disabled, timesheets can be submitted for any date.
+                </p>
+              </div>
+              <Switch
+                checked={weeklyLockEnabled}
+                disabled={loadingWeeklyLock || weeklyLockMutation.isPending}
+                onCheckedChange={(v) => weeklyLockMutation.mutate(v)}
+                data-testid="switch-weekly-lock-users"
+              />
+            </div>
+          </Card>
+        )}
 
         <Card className="bg-slate-800/50 border-blue-500/20 p-4" data-testid="card-auto-reject-setting">
           <div className="flex items-center justify-between gap-4">

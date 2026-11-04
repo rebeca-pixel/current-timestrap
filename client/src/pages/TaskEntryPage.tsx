@@ -10,6 +10,8 @@ import { format } from 'date-fns';
 import { Task } from '@/components/TaskTable';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { useWeeklyLock } from '@/hooks/useWeeklyLock';
+import WeeklyLockBanner from '@/components/WeeklyLockBanner';
 
 // TaskForm's onSave hands back a task that may not have an id yet (new,
 // not-yet-created tasks don't get one until the server assigns it) — so
@@ -73,6 +75,7 @@ export default function TaskEntryPage({ user: propUser }: { user?: any } = {}) {
   // Get date from URL or use today
   const searchParams = new URLSearchParams(window.location.search);
   const dateParam = searchParams.get('date') || format(new Date(), 'yyyy-MM-dd');
+  const { locked: isWeekLocked, result: weekLockResult } = useWeeklyLock(dateParam);
 
   // Fetch the employee's time entries to find the one we're editing
   const { data: timeEntries = [], isLoading } = useQuery<any[]>({
@@ -120,6 +123,8 @@ export default function TaskEntryPage({ user: propUser }: { user?: any } = {}) {
         endTime: taskData.endTime,
         totalHours: formatDuration(taskData.durationMinutes),
         percentageComplete: taskData.percentageComplete,
+        // Existing-progress validation: only sent for drafts with no progress saved yet; the server re-validates it.
+        progressIncrement: (taskData as any).progressIncrement,
         pmsId: (taskData as any).pmsId,
         pmsSubtaskId: (taskData as any).pmsSubtaskId,
         keyStep: (taskData as any).keyStep,
@@ -159,6 +164,8 @@ export default function TaskEntryPage({ user: propUser }: { user?: any } = {}) {
         endTime: taskData.endTime,
         totalHours: formatDuration(taskData.durationMinutes),
         percentageComplete: taskData.percentageComplete,
+        // Existing-progress validation: only present for new PMS-linked entries; the server re-validates it.
+        progressIncrement: (taskData as any).progressIncrement,
         pmsId: (taskData as any).pmsId,
         pmsSubtaskId: (taskData as any).pmsSubtaskId,
         keyStep: (taskData as any).keyStep,
@@ -238,15 +245,19 @@ export default function TaskEntryPage({ user: propUser }: { user?: any } = {}) {
             </div>
           </div>
 
-          <TaskForm
-            task={task as any}
-            date={dateParam}
-            user={user as any}
-            compactSelectMenus
-            onSave={handleSave}
-            onCancel={handleCancel}
-            saveButtonText={id ? "Update Entry" : "Save Entry"}
-          />
+          {isWeekLocked ? (
+            <WeeklyLockBanner weekStart={weekLockResult.weekStart} weekEnd={weekLockResult.weekEnd} />
+          ) : (
+            <TaskForm
+              task={task as any}
+              date={dateParam}
+              user={user as any}
+              compactSelectMenus
+              onSave={handleSave}
+              onCancel={handleCancel}
+              saveButtonText={id ? "Update Entry" : "Save Entry"}
+            />
+          )}
         </Card>
       </div>
     </div>

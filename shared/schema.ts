@@ -197,6 +197,8 @@ export const timeEntries = pgTable("time_entries", {
   percentageComplete: integer("percentage_complete").default(0),
   pmsId: text("pms_id"),
   pmsSubtaskId: text("pms_subtask_id"),
+  // Progress already in PMS before this entry; null for entries saved without the existing-progress check.
+  previousProgress: integer("previous_progress"),
   status: text("status").default("pending"),
   managerApproved: boolean("manager_approved").default(false),
   approvedBy: varchar("approved_by"),

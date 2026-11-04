@@ -9,8 +9,42 @@ export const pmsPool = new Pool({
   connectionString: pmsDatabaseUrl,
   ssl: process.env.PMS_DISABLE_SSL === 'true' ? false : {
     rejectUnauthorized: false
-  }
+  },
+  // Performance only: keep connections warm instead of reconnecting (TCP + TLS) after pg's 10s default idle timeout.
+  idleTimeoutMillis: 60000,
+  keepAlive: true
 });
+
+// ---- Short-lived read cache (performance only; results are unchanged) ----
+// The Tracker / Plan pages call getProjects / getTasks several times at once. Concurrent identical calls
+// now share one run, and a result is reused for PMS_CACHE_TTL_MS (default 30s; 0 turns the cache off).
+// Empty results are never cached (they may come from a failed query). Any PMS write below clears it.
+const PMS_CACHE_TTL_MS = Number(process.env.PMS_CACHE_TTL_MS ?? 30000);
+const pmsCache = new Map<string, { at: number; value: any }>();
+const pmsInflight = new Map<string, Promise<any>>();
+let pmsCacheGeneration = 0;
+export const clearPmsCache = () => { pmsCacheGeneration++; pmsCache.clear(); pmsInflight.clear(); };
+async function withPmsCache<T>(key: string, loader: () => Promise<T>): Promise<T> {
+  if (!(PMS_CACHE_TTL_MS > 0)) return loader();
+  const hit = pmsCache.get(key);
+  if (hit && Date.now() - hit.at < PMS_CACHE_TTL_MS) return structuredClone(hit.value);
+  let pending = pmsInflight.get(key);
+  if (!pending) {
+    const generation = pmsCacheGeneration;
+    pending = loader()
+      .then((value) => {
+        const worthCaching = Array.isArray(value) ? value.length > 0 : value != null;
+        if (worthCaching && generation === pmsCacheGeneration) pmsCache.set(key, { at: Date.now(), value });
+        return value;
+      })
+      .finally(() => { if (pmsInflight.get(key) === pending) pmsInflight.delete(key); });
+    pmsInflight.set(key, pending);
+  }
+  return structuredClone(await pending);
+}
+// Wraps a PMS write so the read cache is cleared after it finishes (success or failure).
+const invalidatesPmsCache = <F extends (...args: any[]) => Promise<any>>(fn: F): F =>
+  (async (...args: any[]) => { try { return await fn(...args); } finally { clearPmsCache(); } }) as F;
 
 // Log which PMS database we are connecting to (masked for security)
 if (pmsDatabaseUrl) {
@@ -180,7 +214,7 @@ export const isPMSProjectActive = (project: any, todayKey: string = getISTTodayK
   return true;
 };
 
-export const getProjects = async (
+const getProjectsUncached = async (
   userRole?: string,
   userEmpCode?: string,
   userDepartment?: string,
@@ -208,13 +242,15 @@ export const getProjects = async (
       FROM projects p
       ORDER BY p.title
     `;
-    const projectsResult: QueryResult = await pmsPool.query(query);
-    const allProjects = (projectsResult.rows as any[]) || [];
-
-    // 2. Fetch all project departments
-    const deptResult: QueryResult = await pmsPool.query(`
+    // Steps 1 and 2 do not depend on each other, so they run together (same queries, same results).
+    const [projectsResult, deptResult] = await Promise.all([
+      pmsPool.query(query) as Promise<QueryResult>,
+      // 2. Fetch all project departments
+      pmsPool.query(`
       SELECT project_id, department FROM project_departments
-    `);
+    `) as Promise<QueryResult>,
+    ]);
+    const allProjects = (projectsResult.rows as any[]) || [];
 
     const projectDepts: Record<string, string[]> = {};
     deptResult.rows.forEach((row: any) => {
@@ -238,43 +274,38 @@ export const getProjects = async (
         empPmsId = empRow.id || '';
         const empId = empRow.id;
 
+        // The three lookups below are independent, so they run together (same queries, same results).
         // Projects where employee is assigned to a task (task member, task owner, or assigner)
-        const assignedProjRes = await pmsPool.query(
-          `SELECT DISTINCT pt.project_id
+        const [assignedProjRes, memberProjRes, createdProjRes] = await Promise.all([
+          pmsPool.query(
+            `SELECT DISTINCT pt.project_id
            FROM project_tasks pt
            LEFT JOIN task_members tm ON pt.id = tm.task_id
            WHERE tm.employee_id = $1 OR pt.task_owner_id = $1 OR pt.assigner_id = $1`,
-          [empId]
-        );
+            [empId]
+          ),
+          // Also check project_members table for direct project membership
+          // (the table may not exist — silently ignore)
+          pmsPool.query(
+            `SELECT DISTINCT project_id FROM project_members WHERE employee_id = $1`,
+            [empId]
+          ).catch(() => null),
+          // Also include projects created by this employee (using UUID comparison)
+          // (silently ignore if the column doesn't exist)
+          pmsPool.query(
+            `SELECT DISTINCT id FROM projects WHERE created_by_employee_id = $1`,
+            [empId]
+          ).catch(() => null),
+        ]);
         assignedProjRes.rows.forEach((r: any) => {
           if (r.project_id) assignedProjectIds.add(r.project_id);
         });
-
-        // Also check project_members table for direct project membership
-        try {
-          const memberProjRes = await pmsPool.query(
-            `SELECT DISTINCT project_id FROM project_members WHERE employee_id = $1`,
-            [empId]
-          );
-          memberProjRes.rows.forEach((r: any) => {
-            if (r.project_id) assignedProjectIds.add(r.project_id);
-          });
-        } catch (_memberErr) {
-          // project_members table may not exist — silently ignore
-        }
-
-        // Also include projects created by this employee (using UUID comparison)
-        try {
-          const createdProjRes = await pmsPool.query(
-            `SELECT DISTINCT id FROM projects WHERE created_by_employee_id = $1`,
-            [empId]
-          );
-          createdProjRes.rows.forEach((r: any) => {
-            if (r.id) assignedProjectIds.add(r.id);
-          });
-        } catch (_createdErr) {
-          // Silently ignore if column doesn't exist
-        }
+        memberProjRes?.rows.forEach((r: any) => {
+          if (r.project_id) assignedProjectIds.add(r.project_id);
+        });
+        createdProjRes?.rows.forEach((r: any) => {
+          if (r.id) assignedProjectIds.add(r.id);
+        });
       }
     }
 
@@ -330,7 +361,18 @@ export const getProjects = async (
   }
 };
 
-export const getTasks = async (projectId?: string, userDepartment?: string, userEmpCode?: string, userRole?: string): Promise<PMSTask[]> => {
+export const getProjects = (
+  userRole?: string,
+  userEmpCode?: string,
+  userDepartment?: string,
+  includeInactive: boolean = false
+): Promise<PMSProject[]> =>
+  withPmsCache(
+    `projects|${getISTTodayKey()}|${JSON.stringify([userRole ?? null, userEmpCode ?? null, userDepartment ?? null, includeInactive])}`,
+    () => getProjectsUncached(userRole, userEmpCode, userDepartment, includeInactive)
+  );
+
+const getTasksUncached = async (projectId?: string, userDepartment?: string, userEmpCode?: string, userRole?: string): Promise<PMSTask[]> => {
   try {
     const isAdmin = userRole === 'admin' || userEmpCode === 'E0001' || userEmpCode === 'E0000';
     const todayKey = getISTTodayKey();
@@ -384,7 +426,19 @@ export const getTasks = async (projectId?: string, userDepartment?: string, user
   }
 };
 
-export const getDepartmentTasks = async (userDepartment: string, userEmpCode: string, userRole: string, myTasksOnly: boolean = false): Promise<any[]> => {
+export const getTasks = (projectId?: string, userDepartment?: string, userEmpCode?: string, userRole?: string): Promise<PMSTask[]> =>
+  withPmsCache(
+    `tasks|${getISTTodayKey()}|${JSON.stringify([projectId ?? null, userDepartment ?? null, userEmpCode ?? null, userRole ?? null])}`,
+    () => getTasksUncached(projectId, userDepartment, userEmpCode, userRole)
+  );
+
+export const getDepartmentTasks = (userDepartment: string, userEmpCode: string, userRole: string, myTasksOnly: boolean = false): Promise<any[]> =>
+  withPmsCache(
+    `deptTasks|${getISTTodayKey()}|${JSON.stringify([userDepartment ?? null, userEmpCode ?? null, userRole ?? null, myTasksOnly])}`,
+    () => getDepartmentTasksUncached(userDepartment, userEmpCode, userRole, myTasksOnly)
+  );
+
+const getDepartmentTasksUncached = async (userDepartment: string, userEmpCode: string, userRole: string, myTasksOnly: boolean = false): Promise<any[]> => {
   try {
     const todayKey = getISTTodayKey();
 
@@ -558,7 +612,7 @@ export const getSubtaskById = async (subtaskId: string): Promise<PMSSubtask | nu
 };
 
 // Update a PMS task (e.g., change end_date) and return updated row
-export const updateTaskInPMS = async (taskId: string, updates: { end_date?: string, status?: string }): Promise<PMSTask | null> => {
+export const updateTaskInPMS = invalidatesPmsCache(async (taskId: string, updates: { end_date?: string, status?: string }): Promise<PMSTask | null> => {
   try {
     const setParts: string[] = [];
     const params: any[] = [];
@@ -585,10 +639,10 @@ export const updateTaskInPMS = async (taskId: string, updates: { end_date?: stri
     console.error('Error updating task in PMS:', error);
     return null;
   }
-};
+});
 
 // Update project progress percentage in PMS
-export const updateProjectProgress = async (projectId: string, progress: number): Promise<boolean> => {
+export const updateProjectProgress = invalidatesPmsCache(async (projectId: string, progress: number): Promise<boolean> => {
   try {
     console.log(`📡 Updating PMS project ${projectId} progress to ${progress}%`);
     // Supports both UUID and project_code
@@ -607,9 +661,9 @@ export const updateProjectProgress = async (projectId: string, progress: number)
     console.error('💥 Error updating project progress in PMS:', error);
     return false;
   }
-};
+});
 // Update a PMS subtask status
-export const updateSubtaskInPMS = async (subtaskId: string, isCompleted: boolean): Promise<PMSSubtask | null> => {
+export const updateSubtaskInPMS = invalidatesPmsCache(async (subtaskId: string, isCompleted: boolean): Promise<PMSSubtask | null> => {
   try {
     console.log(`📡 Updating PMS subtask ${subtaskId} is_completed to ${isCompleted}`);
     const result: QueryResult = await pmsPool.query(
@@ -626,10 +680,33 @@ export const updateSubtaskInPMS = async (subtaskId: string, isCompleted: boolean
     console.error('💥 Error updating subtask in PMS:', error);
     return null;
   }
+});
+
+// Read-only: the progress already submitted to PMS for a subtask (preferred) or, when no subtask is
+// given, for the task itself. Returns null when it cannot be determined (unknown id, bad id, DB error)
+// so callers can fail open instead of blocking work.
+export const getExistingPmsProgress = async (
+  taskId?: string | null,
+  subtaskId?: string | null
+): Promise<number | null> => {
+  try {
+    let result: QueryResult | null = null;
+    if (subtaskId) {
+      result = await pmsPool.query('SELECT progress FROM subtasks WHERE id = $1::uuid', [subtaskId]);
+    } else if (taskId) {
+      result = await pmsPool.query('SELECT progress FROM project_tasks WHERE id = $1::uuid', [taskId]);
+    }
+    if (!result || !result.rows || result.rows.length === 0) return null;
+    const n = Number(result.rows[0].progress);
+    return Number.isFinite(n) ? Math.min(100, Math.max(0, Math.round(n))) : 0;
+  } catch (error) {
+    console.error('💥 Error reading existing PMS progress:', error);
+    return null;
+  }
 };
 
 // Update a PMS subtask progress and trigger parent update
-export const updateSubtaskProgress = async (subtaskId: string, progress: number): Promise<boolean> => {
+export const updateSubtaskProgress = invalidatesPmsCache(async (subtaskId: string, progress: number): Promise<boolean> => {
   try {
     console.log(`📡 Updating PMS subtask ${subtaskId} progress to ${progress}%`);
     const result: QueryResult = await pmsPool.query(
@@ -648,10 +725,10 @@ export const updateSubtaskProgress = async (subtaskId: string, progress: number)
     console.error('💥 Error updating subtask progress in PMS:', error);
     return false;
   }
-};
+});
 
 // Recalculate task progress based on subtasks
-export const updateTaskProgress = async (taskId: string, directProgress?: number, date?: string): Promise<boolean> => {
+export const updateTaskProgress = invalidatesPmsCache(async (taskId: string, directProgress?: number, date?: string): Promise<boolean> => {
   try {
     console.log(`🔍 Recalculating progress for task ${taskId}`);
     const subtasks = await getSubtasks(taskId);
@@ -700,10 +777,10 @@ export const updateTaskProgress = async (taskId: string, directProgress?: number
     console.error('💥 Error updating task progress in PMS:', error);
     return false;
   }
-};
+});
 
 // Recalculate key step progress based on tasks
-export const updateKeyStepProgress = async (keyStepId: string): Promise<boolean> => {
+export const updateKeyStepProgress = invalidatesPmsCache(async (keyStepId: string): Promise<boolean> => {
   try {
     console.log(`🔍 Recalculating progress for key step ${keyStepId}`);
     const tasksRes = await pmsPool.query('SELECT progress FROM project_tasks WHERE key_step_id = $1::uuid', [keyStepId]);
@@ -729,10 +806,10 @@ export const updateKeyStepProgress = async (keyStepId: string): Promise<boolean>
     console.error('💥 Error updating key step progress in PMS:', error);
     return false;
   }
-};
+});
 
 // Recalculate project progress based on key steps
-export const updateProjectProgressFromChildren = async (projectId: string): Promise<boolean> => {
+export const updateProjectProgressFromChildren = invalidatesPmsCache(async (projectId: string): Promise<boolean> => {
   try {
     console.log(`🔍 Recalculating progress for project ${projectId}`);
     const keyStepsRes = await pmsPool.query('SELECT progress FROM key_steps WHERE project_id = $1::uuid', [projectId]);
@@ -761,7 +838,7 @@ export const updateProjectProgressFromChildren = async (projectId: string): Prom
     console.error('💥 Error updating project progress from children in PMS:', error);
     return false;
   }
-};
+});
 
 // Helper to get current project progress
 export const getProjectProgress = async (projectId: string): Promise<number> => {

@@ -55,6 +55,10 @@ const formatPlanTime12h = (time?: string | null): string | null => {
   return `${h12}:${String(m).padStart(2, '0')} ${period}`;
 };
 
+// Display only: set to true to show the Achievements and Description boxes again in the expanded task details.
+// They are hidden for now; the data itself is untouched (still saved, validated and used everywhere else).
+const SHOW_ACHIEVEMENTS_AND_DESCRIPTION = false;
+
 const parseTaskDescription = (taskDesc: string, entry?: ExtendedTimeEntry) => {
   const parts = taskDesc.split(' | ');
   let task = '';
@@ -1150,17 +1154,18 @@ export default function ApprovalPage({ user }: { user: User }) {
                                         <Clock className="w-3.5 h-3.5 mr-1.5" />{entry.startTime} - {entry.endTime}
                                       </span>
                                       <span className="flex items-center text-xs text-purple-300 font-bold bg-purple-500/20 px-2.5 py-1 rounded-md border border-purple-500/30">
-                                        <Target className="w-3.5 h-3.5 mr-1.5" />{entry.percentageComplete}% Complete
+                                        <Target className="w-3.5 h-3.5 mr-1.5" />{typeof (entry as any).previousProgress === 'number'
+                                          ? `Previous ${(entry as any).previousProgress}% → Current ${entry.percentageComplete}%`
+                                          : `${entry.percentageComplete}% Complete`}
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-1.5 shrink-0">
-                                      <Badge className={`uppercase text-xs font-bold px-2.5 py-0.5 border ${
-                                        entry.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' :
+                                      <Badge className={`uppercase text-xs font-bold px-2.5 py-0.5 border ${entry.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' :
                                         entry.status === 'resubmitted' ? 'bg-orange-500/20 text-orange-300 border-orange-500/50 animate-pulse' :
-                                        entry.status === 'approved' ? 'bg-green-500/20 text-green-300 border-green-500/40' :
-                                        entry.status === 'manager_approved' ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' :
-                                        entry.status === 'on_hold' ? 'bg-orange-500/20 text-orange-300 border-orange-500/40' :
-                                        'bg-red-500/20 text-red-300 border-red-500/40'}`}>
+                                          entry.status === 'approved' ? 'bg-green-500/20 text-green-300 border-green-500/40' :
+                                            entry.status === 'manager_approved' ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' :
+                                              entry.status === 'on_hold' ? 'bg-orange-500/20 text-orange-300 border-orange-500/40' :
+                                                'bg-red-500/20 text-red-300 border-red-500/40'}`}>
                                         {(entry.status || 'pending').replace('_', ' ')}
                                       </Badge>
                                       {entry.pmsId
@@ -1219,9 +1224,9 @@ export default function ApprovalPage({ user }: { user: User }) {
                                         <TabsContent value="details" className="space-y-4 mt-0">
                                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <TaskDetailRow label="Quantify Result" value={entry.quantify} icon={Target} colorClass="border-orange-500/30 text-orange-400" />
-                                            <TaskDetailRow label="Achievements" value={entry.achievements} icon={Trophy} colorClass="border-green-500/30 text-green-400" />
-                                          </div>
-                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {SHOW_ACHIEVEMENTS_AND_DESCRIPTION && (
+                                              <TaskDetailRow label="Achievements" value={entry.achievements} icon={Trophy} colorClass="border-green-500/30 text-green-400" />
+                                            )}
                                             <div className="bg-slate-900/60 p-3.5 rounded-lg border border-cyan-500/30">
                                               <span className="text-cyan-300 font-bold uppercase text-xs tracking-wider block mb-2 flex items-center gap-1.5">
                                                 <Wrench className="w-3.5 h-3.5" />Tools Used
@@ -1232,7 +1237,9 @@ export default function ApprovalPage({ user }: { user: User }) {
                                                   : <span className="text-slate-400 text-xs italic">No tools recorded</span>}
                                               </div>
                                             </div>
-                                            <TaskDetailRow label="Description" value={entry.taskDescription.split(' | ')[2] || parsed.description} icon={FileText} colorClass="border-blue-500/30 text-blue-400" />
+                                            {SHOW_ACHIEVEMENTS_AND_DESCRIPTION && (
+                                              <TaskDetailRow label="Description" value={entry.taskDescription.split(' | ')[2] || parsed.description} icon={FileText} colorClass="border-blue-500/30 text-blue-400" />
+                                            )}
                                           </div>
                                           {entry.status === 'on_hold' && entry.onHoldReason && (
                                             <div className="bg-orange-500/10 p-3.5 rounded-lg border border-orange-500/30 flex items-start gap-3">

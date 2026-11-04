@@ -18,6 +18,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { validateWithRules } from '@shared/timesheetValidation';
 import { evaluateSameDaySubmission, detectBrowserTimeZone, SAME_DAY_SUBMIT_CUTOFF_LABEL } from '@shared/submissionRestriction';
+import { useWeeklyLock } from '@/hooks/useWeeklyLock';
+import WeeklyLockBanner from '@/components/WeeklyLockBanner';
 import { useValidationRules } from '@/hooks/useValidationRules';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { format, addDays, isAfter, startOfDay } from 'date-fns';
@@ -760,6 +762,8 @@ export default function TrackerPage({ user }: TrackerPageProps) {
     alreadySubmitted: alreadySubmittedToday,
   });
   const isSameDayBlocked = sameDayCheck.blocked;
+  // Weekly lock (admin switch): dates in a closed Sunday–Saturday week are read-only. OFF => never locked.
+  const { locked: isWeekLocked, message: weekLockMessage, result: weekLockResult } = useWeeklyLock(formattedDate);
   const needsPlan = formattedDate === currentToday && !dailyPlanStatus?.submitted;
   const isOnLeaveToday = !!leaveStatusData?.hasLeave; // true only for Full Day leave
   const hasPartialExemption = !!(leaveStatusData?.hasHalfDayLeave || leaveStatusData?.hasHalfDayOD || leaveStatusData?.hasHourlyOD || leaveStatusData?.hasPermission);
@@ -837,7 +841,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
   const hasMissingProgressOrQuantify = tasksMissingProgressOrQuantify.length > 0;
 
   const canSubmit =
-    !isSubmitting && !isSameDayBlocked && !hasMissingProgressOrQuantify && (
+    !isSubmitting && !isWeekLocked && !isSameDayBlocked && !hasMissingProgressOrQuantify && (
       settings.forceAllowFinalSubmit ||
       (
         !needsPlan &&
@@ -854,6 +858,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
   // blocker is visible instead of a silently greyed-out button.
   const submitBlockReason = useMemo(() => {
     if (isSubmitting) return null;
+    if (isWeekLocked) return weekLockMessage;
     if (isSameDayBlocked) return sameDayCheck.message ?? null;
     if (isOnLeaveToday) return leaveStatusData?.status === 'Pending'
       ? 'You have a pending leave request today, so the timesheet for this date is blocked.'
@@ -875,7 +880,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
       return `Minimum 8 hours required to Final Submit. You need ${formatDuration(remaining)} more logged (${formatDuration(totalCombinedMinutes)} / 8h 00m logged).`;
     }
     return null;
-  }, [isSubmitting, isSameDayBlocked, sameDayCheck.message, isOnLeaveToday, leaveStatusData?.status, needsPlan, todaysTasksOnly, hasInvalidTasks, invalidTasksDetails, hasMissingProgressOrQuantify, tasksMissingProgressOrQuantify, hasEnoughHours, settings.forceAllowFinalSubmit, totalCombinedMinutes]);
+  }, [isSubmitting, isWeekLocked, weekLockMessage, isSameDayBlocked, sameDayCheck.message, isOnLeaveToday, leaveStatusData?.status, needsPlan, todaysTasksOnly, hasInvalidTasks, invalidTasksDetails, hasMissingProgressOrQuantify, tasksMissingProgressOrQuantify, hasEnoughHours, settings.forceAllowFinalSubmit, totalCombinedMinutes]);
 
 
   const handleSaveTask = async (taskData: Task) => {
@@ -885,7 +890,7 @@ export default function TrackerPage({ user }: TrackerPageProps) {
 
   // Quick Fill: update only Quantify + Progress from the table row. The PUT endpoint replaces the
   // whole entry, so we resend every other field exactly as stored on the server entry.
-  const handleQuickSaveTask = async (task: Task, values: { quantify: string; percentageComplete: number; startTime: string; endTime: string; toolsUsed: string[]; subTask?: string; pmsSubtaskId?: string }) => {
+  const handleQuickSaveTask = async (task: Task, values: { quantify: string; percentageComplete: number; startTime: string; endTime: string; toolsUsed: string[]; subTask?: string; pmsSubtaskId?: string; progressIncrement?: number }) => {
     const entry: any = (serverEntries as any[]).find((e: any) => e.id === task.id);
     if (!entry) {
       toast({ title: "Error", description: "Could not find this entry. Please refresh.", variant: "destructive" });
@@ -909,6 +914,8 @@ export default function TrackerPage({ user }: TrackerPageProps) {
           ? entry.totalHours
           : formatDuration(deriveMinutesFromTimes(values.startTime, values.endTime)),
         percentageComplete: values.percentageComplete,
+        // Existing-progress validation: only set when Quick Fill took just the progress being added.
+        ...(values.progressIncrement !== undefined ? { progressIncrement: values.progressIncrement } : {}),
         pmsId: entry.pmsId || undefined,
         pmsSubtaskId: values.pmsSubtaskId || entry.pmsSubtaskId || undefined,
         keyStep: entry.keyStep || undefined,
@@ -1051,6 +1058,15 @@ export default function TrackerPage({ user }: TrackerPageProps) {
     if (isSubmitting) return;
 
     // Checked first, before any entry is created, so a blocked attempt leaves no partial/duplicate rows behind.
+    if (isWeekLocked) {
+      toast({
+        title: 'Submission Period Closed',
+        description: weekLockMessage,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (isSameDayBlocked) {
       toast({
         title: "Today's Timesheet Can't Be Submitted Yet",
@@ -1720,6 +1736,8 @@ export default function TrackerPage({ user }: TrackerPageProps) {
           <h2 className="text-xl font-bold text-white" style={{ fontFamily: 'Space Grotesk' }}>Today's Tasks</h2>
           <Button
             onClick={() => checkPlanAndNavigate(`/task-entry?date=${formattedDate}`)}
+            disabled={isWeekLocked}
+            title={isWeekLocked ? weekLockMessage : undefined}
             className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transition-all"
             data-testid="button-add-task"
           >
@@ -1727,6 +1745,12 @@ export default function TrackerPage({ user }: TrackerPageProps) {
             Add New Task
           </Button>
         </div>
+
+        {isWeekLocked && (
+          <div className="mb-4">
+            <WeeklyLockBanner weekStart={weekLockResult.weekStart} weekEnd={weekLockResult.weekEnd} />
+          </div>
+        )}
 
         {/* Filter Bar */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -1949,8 +1973,8 @@ export default function TrackerPage({ user }: TrackerPageProps) {
                         </div>
 
                         <Button
-                          onClick={() => !isAdded && handleQuickAddTask(task)}
-                          disabled={isAdded}
+                          onClick={() => !isAdded && !isWeekLocked && handleQuickAddTask(task)}
+                          disabled={isAdded || isWeekLocked}
                           size="sm"
                           className={`${isAdded
                             ? 'bg-slate-800 text-slate-500 cursor-not-allowed'

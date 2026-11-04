@@ -1,3 +1,4 @@
+import { evaluateProgressIncrement, getRemainingProgress } from '@shared/progressIncrement';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { playSound, popEmoji, speak } from '@/lib/feedback';
 import { Button } from '@/components/ui/button';
@@ -911,6 +912,45 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
     }
   };
 
+  /* ---- Existing-progress validation (additive) ----
+     For NEW entries (and drafts that have no progress saved yet, i.e. 0%) linked to a PMS task/subtask
+     the user enters only the progress being ADDED; the existing submitted progress is shown and the entry
+     is limited to the remaining balance. Editing an entry that already has progress saved keeps the
+     original behaviour (its stored value is already a total). If the existing progress can't be read we
+     fall back to the original behaviour as well. */
+  const isEditingExisting = !!(task as any)?.id && Number((task as any)?.percentageComplete) > 0;
+  const [existingProgress, setExistingProgress] = useState<number | null>(null);
+  const [loadingExistingProgress, setLoadingExistingProgress] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const subtaskId = formData.pmsSubtaskId;
+    const taskId = formData.pmsId;
+    // A task that has subtasks is tracked per subtask; wait until one is chosen.
+    if (isEditingExisting || (!subtaskId && (!taskId || subtasks.length > 0))) {
+      setExistingProgress(null);
+      setLoadingExistingProgress(false);
+      return;
+    }
+    setLoadingExistingProgress(true);
+    const params = new URLSearchParams();
+    if (subtaskId) params.append('subtaskId', subtaskId);
+    else if (taskId) params.append('taskId', taskId);
+    fetch(`/api/pms/existing-progress?${params.toString()}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(json => {
+        if (cancelled) return;
+        const p = json && typeof json.progress === 'number' ? json.progress : null;
+        setExistingProgress(p);
+      })
+      .catch(() => { if (!cancelled) setExistingProgress(null); })
+      .finally(() => { if (!cancelled) setLoadingExistingProgress(false); });
+    return () => { cancelled = true; };
+  }, [formData.pmsId, formData.pmsSubtaskId, subtasks.length, isEditingExisting]);
+
+  const incrementMode = !isEditingExisting && existingProgress !== null;
+  const remainingProgress = incrementMode ? getRemainingProgress(existingProgress) : 100;
+  const maxProgressInput = incrementMode ? remainingProgress : 100;
+
   const validateForm = () => {
     const errs: string[] = [];
     if (!formData.project) errs.push('Project is required');
@@ -920,6 +960,12 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
       errs.push('Sub Task selection is mandatory for this task');
     }
     if (!(Number(formData.percentageComplete) > 0)) errs.push('Progress (Completion %) is required');
+    if (!isEditingExisting && loadingExistingProgress) {
+      errs.push('Checking the existing progress... please try again in a moment');
+    } else if (incrementMode && Number(formData.percentageComplete) > 0) {
+      const progressCheck = evaluateProgressIncrement(existingProgress, formData.percentageComplete);
+      if (!progressCheck.valid && progressCheck.message) errs.push(progressCheck.message);
+    }
     if (!formData.startTime) errs.push('Start time is required');
     if (!formData.endTime) errs.push('End time is required');
     if (formData.startTime && formData.endTime) {
@@ -1051,6 +1097,13 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
       payload.durationMinutes = diff > 0 ? diff : 0;
     }
     payload.isComplete = (task as any)?.isComplete || false;
+    // Existing-progress validation: the form holds the progress being added; hand the caller the new total
+    // (existing + added) as percentageComplete, exactly the cumulative value everything downstream expects,
+    // and the raw increment so the server can re-validate against live PMS progress.
+    if (incrementMode) {
+      payload.progressIncrement = Number(formData.percentageComplete);
+      payload.percentageComplete = (existingProgress as number) + Number(formData.percentageComplete);
+    }
     // include pmsId if present
     // include pmsId if present
     // @ts-ignore
@@ -1070,7 +1123,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
     try {
       // Award points only when task marked complete (100%) — per-project
       try {
-        if (formData.percentageComplete === 100 && formData.project) {
+        if (payload.percentageComplete === 100 && formData.project) {
           const projectId = formData.project;
           // Determine if the task is overdue by comparing its due date to today
           // formData.date is the date the work is logged; PMS due date may be
@@ -1300,7 +1353,9 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                 </div>
 
                 <div className="min-w-0 space-y-1">
-                  <Label htmlFor="percentage" className="text-blue-100 tracker-form-label">Completion % *</Label>
+                  <Label htmlFor="percentage" className="text-blue-100 tracker-form-label">
+                    {incrementMode ? `Progress to add % (max ${remainingProgress}) *` : 'Completion % *'}
+                  </Label>
                   <div className="flex items-center space-x-2">
                     <Button
                       type="button"
@@ -1316,10 +1371,10 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                       id="percentage"
                       type="number"
                       min="0"
-                      max="100"
+                      max={maxProgressInput}
                       value={formData.percentageComplete}
                       onChange={(e) => {
-                        const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+                        const val = Math.min(maxProgressInput, Math.max(0, parseInt(e.target.value) || 0));
                         setFormData({ ...formData, percentageComplete: val });
                         if (val === 100) {
                           playSound('hurray');
@@ -1333,7 +1388,7 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => setFormData({ ...formData, percentageComplete: Math.min(100, formData.percentageComplete + 10) })}
+                      onClick={() => setFormData({ ...formData, percentageComplete: Math.min(maxProgressInput, formData.percentageComplete + 10) })}
                       className="bg-slate-700/50 border-blue-500/20 text-white hover:bg-slate-600/50 tracker-form-input"
                       data-testid="btn-increase-percentage"
                     >
@@ -1342,6 +1397,28 @@ export default function TaskForm({ task, onSave, onCancel, user, saveButtonText,
                   </div>
                 </div>
               </div>
+              {incrementMode && (
+                <div
+                  className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-100"
+                  role="status"
+                  data-testid="progress-existing-info"
+                >
+                  <span className="font-semibold">Existing progress: {existingProgress}%</span>
+                  {' · '}
+                  <span className="font-semibold">Remaining: {remainingProgress}%</span>
+                  {remainingProgress > 0 ? (
+                    <>
+                      {' · '}
+                      Enter only the progress you are adding now (1–{remainingProgress}%).
+                      {Number(formData.percentageComplete) > 0 && Number(formData.percentageComplete) <= remainingProgress && (
+                        <> New total: <span className="font-semibold">{(existingProgress as number) + Number(formData.percentageComplete)}%</span>.</>
+                      )}
+                    </>
+                  ) : (
+                    <> This item is already at 100%, so no more progress can be submitted.</>
+                  )}
+                </div>
+              )}
               {timeAdjustment && (
                 <p className="text-xs text-amber-300" role="status">{timeAdjustment}</p>
               )}

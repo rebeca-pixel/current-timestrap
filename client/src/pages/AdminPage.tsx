@@ -18,6 +18,10 @@ import {
   Download
 } from 'lucide-react';
 import { User } from '@/context/AuthContext';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { apiRequest, queryClient } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
+import { WEEKLY_LOCK_QUERY_KEY } from '@/hooks/useWeeklyLock';
 
 interface AdminPageProps {
   user: User;
@@ -52,6 +56,36 @@ export default function AdminPage({ user }: AdminPageProps) {
   const [settings, setSettings] = useState(mockSettings);
   const [activeTab, setActiveTab] = useState('overview');
 
+  // Weekly Timesheet Submission Lock (Admin only; the server also rejects non-admins).
+  const { toast } = useToast();
+  const { data: weeklyLockSetting, isLoading: loadingWeeklyLock } = useQuery<{ enabled: boolean }>({
+    queryKey: [WEEKLY_LOCK_QUERY_KEY],
+    staleTime: 0,
+    refetchOnMount: true,
+  });
+  const weeklyLockEnabled = weeklyLockSetting?.enabled === true;
+  const weeklyLockMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const response = await apiRequest('PATCH', '/api/settings/weekly-submission-lock', { employeeId: user.id, enabled });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: [WEEKLY_LOCK_QUERY_KEY] });
+      toast({
+        title: data.enabled ? 'Weekly submission lock enabled' : 'Weekly submission lock disabled',
+        description: data.enabled
+          ? "Previous weeks (Sunday–Saturday) are now locked from the following Sunday."
+          : 'Timesheets can be submitted for any date again.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Failed to update setting',
+        description: error?.message || 'Could not update the weekly submission lock.',
+        variant: 'destructive',
+      });
+    },
+  });
 
   const updateSetting = (key: string, value: boolean | number) => {
     setSettings({ ...settings, [key]: value });
@@ -306,6 +340,24 @@ export default function AdminPage({ user }: AdminPageProps) {
                   data-testid="switch-email-notifications"
                 />
               </div>
+
+              {user.role === 'admin' && (
+                <div className="flex items-center justify-between gap-4 p-4 bg-slate-700/30 rounded-lg" data-testid="card-weekly-lock-setting">
+                  <div>
+                    <Label className="text-white font-medium">Weekly Timesheet Submission Lock</Label>
+                    <p className="text-sm text-blue-200/60">
+                      ON: employees can submit any day of the current week (Sunday–Saturday), including missed days. From the following Sunday the previous week is locked and can no longer be submitted or modified.
+                      OFF: no weekly lock — timesheets can be submitted for any date.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={weeklyLockEnabled}
+                    disabled={loadingWeeklyLock || weeklyLockMutation.isPending}
+                    onCheckedChange={(v) => weeklyLockMutation.mutate(v)}
+                    data-testid="switch-weekly-lock"
+                  />
+                </div>
+              )}
 
               <div className="p-4 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
                 <div className="flex items-start gap-3">

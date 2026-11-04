@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuth } from '@/context/AuthContext';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { TOOLS_LIST } from '@shared/toolCategories';
+import { evaluateProgressIncrement, getRemainingProgress } from '@shared/progressIncrement';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Edit2, Trash2, Check, Clock, MoreHorizontal, RotateCcw, SendHorizontal, Zap, X, Loader2, ChevronDown } from 'lucide-react';
@@ -54,7 +55,7 @@ interface TaskTableProps {
   onReopen?: (task: Task) => void;
   onResubmit?: (task: Task) => void;
   // Quick Fill: save Quantify + Progress straight from the table row (no full form).
-  onQuickSave?: (task: Task, values: { quantify: string; percentageComplete: number; startTime: string; endTime: string; toolsUsed: string[]; subTask?: string; pmsSubtaskId?: string }) => Promise<void>;
+  onQuickSave?: (task: Task, values: { quantify: string; percentageComplete: number; startTime: string; endTime: string; toolsUsed: string[]; subTask?: string; pmsSubtaskId?: string; progressIncrement?: number }) => Promise<void>;
 }
 
 export default function TaskTable({ tasks, onEdit, onDelete, onComplete, onReopen, onResubmit, onQuickSave }: TaskTableProps) {
@@ -125,12 +126,45 @@ export default function TaskTable({ tasks, onEdit, onDelete, onComplete, onReope
     })();
     return () => { cancelled = true; };
   }, [quickId]);
+  // Existing-progress validation (additive): for a draft with no progress saved yet (0%) linked to a PMS
+  // task/subtask, Quick Fill takes only the progress being ADDED and limits it to the remaining balance.
+  // Entries that already have progress, or whose existing progress can't be read, behave as before.
+  const [quickExisting, setQuickExisting] = useState<number | null>(null);
+  const [quickExistingLoading, setQuickExistingLoading] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const t = tasks.find(x => x.id === quickId);
+    const taskId = t?.pmsId;
+    const subtaskId = quickSubtaskId;
+    // Entries that already carry progress keep the original behaviour; a task with subtasks is tracked per subtask.
+    if (!t || Number(t.percentageComplete) > 0 || (!subtaskId && (!taskId || quickSubtasks.length > 0))) {
+      setQuickExisting(null);
+      setQuickExistingLoading(false);
+      return;
+    }
+    setQuickExistingLoading(true);
+    const params = new URLSearchParams();
+    if (subtaskId) params.append('subtaskId', subtaskId);
+    else if (taskId) params.append('taskId', taskId);
+    fetch(`/api/pms/existing-progress?${params.toString()}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(json => { if (!cancelled) setQuickExisting(json && typeof json.progress === 'number' ? json.progress : null); })
+      .catch(() => { if (!cancelled) setQuickExisting(null); })
+      .finally(() => { if (!cancelled) setQuickExistingLoading(false); });
+    return () => { cancelled = true; };
+  }, [quickId, quickSubtaskId, quickSubtasks.length]);
+  const quickIncrementMode = quickExisting !== null;
+  const quickRemaining = quickIncrementMode ? getRemainingProgress(quickExisting) : 100;
+  const quickProgressCheck = quickIncrementMode ? evaluateProgressIncrement(quickExisting, quickProgress) : null;
+  const quickProgressBlocked = quickExistingLoading || (quickProgressCheck !== null && quickProgress > 0 && !quickProgressCheck.valid);
+
   const closeQuickFill = () => { setQuickId(null); setQuickSaving(false); };
   const saveQuickFill = async (task: Task) => {
     if (!onQuickSave) return;
+    if (quickProgressBlocked) return; // existing-progress validation (Enter key bypasses the disabled Save button)
     setQuickSaving(true);
     try {
-      await onQuickSave(task, { quantify: quickQuantify.trim(), percentageComplete: quickProgress, startTime: quickStart, endTime: quickEnd, toolsUsed: quickTools, subTask: quickSubTask, pmsSubtaskId: quickSubtaskId });
+      await onQuickSave(task, { quantify: quickQuantify.trim(), percentageComplete: quickIncrementMode ? (quickExisting as number) + quickProgress : quickProgress, startTime: quickStart, endTime: quickEnd, toolsUsed: quickTools, subTask: quickSubTask, pmsSubtaskId: quickSubtaskId, ...(quickIncrementMode ? { progressIncrement: quickProgress } : {}) });
       closeQuickFill();
     } catch {
       setQuickSaving(false); // parent shows the error toast; keep the row open
@@ -394,11 +428,11 @@ export default function TaskTable({ tasks, onEdit, onDelete, onComplete, onReope
                               className="h-9 px-2 bg-slate-900/60 border-blue-500/20 text-white" data-testid={`input-quick-end-${task.id}`} />
                           </div>
                           <div className="space-y-1 w-24">
-                            <label className="text-[10px] font-bold uppercase tracking-wider text-blue-200/60">Progress % *</label>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-blue-200/60">{quickIncrementMode ? `Add % (max ${quickRemaining}) *` : 'Progress % *'}</label>
                             <Input
-                              type="number" min={0} max={100} value={quickProgress}
-                              onChange={(e) => setQuickProgress(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
-                              placeholder="0-100"
+                              type="number" min={0} max={quickRemaining} value={quickProgress}
+                              onChange={(e) => setQuickProgress(Math.max(0, Math.min(quickRemaining, Number(e.target.value) || 0)))}
+                              placeholder={quickIncrementMode ? `0-${quickRemaining}` : "0-100"}
                               onKeyDown={(e) => { if (e.key === 'Enter') saveQuickFill(task); if (e.key === 'Escape') closeQuickFill(); }}
                               className="h-9 px-2 text-center bg-slate-900/60 border-blue-500/20 text-white"
                               data-testid={`input-quick-progress-${task.id}`}
@@ -458,7 +492,7 @@ export default function TaskTable({ tasks, onEdit, onDelete, onComplete, onReope
                             <Button
                               type="button"
                               size="sm"
-                              disabled={quickSaving || !quickQuantify.trim() || !(quickProgress > 0) || !quickTimeValid || !quickSubtaskOk}
+                              disabled={quickSaving || !quickQuantify.trim() || !(quickProgress > 0) || !quickTimeValid || !quickSubtaskOk || quickProgressBlocked}
                               onClick={() => saveQuickFill(task)}
                               className="h-9 bg-blue-600 hover:bg-blue-500 text-white"
                               data-testid={`button-quick-save-${task.id}`}
@@ -471,6 +505,18 @@ export default function TaskTable({ tasks, onEdit, onDelete, onComplete, onReope
                             </Button>
                           </div>
                         </div>
+                        {quickIncrementMode && (
+                          <p className="text-xs text-blue-100 mt-2" role="status" data-testid={`quick-progress-info-${task.id}`}>
+                            <span className="font-semibold">Existing progress: {quickExisting}%</span>
+                            {' · '}
+                            <span className="font-semibold">Remaining: {quickRemaining}%</span>
+                            {quickRemaining > 0 ? ` · Enter only the progress you are adding now (1–${quickRemaining}%).` : ' · Already at 100%, nothing more to submit.'}
+                            {quickProgress > 0 && quickProgressCheck?.valid && <> New total: <span className="font-semibold">{(quickExisting as number) + quickProgress}%</span>.</>}
+                          </p>
+                        )}
+                        {quickIncrementMode && quickProgress > 0 && quickProgressCheck && !quickProgressCheck.valid && (
+                          <p className="text-xs text-rose-400 mt-1">{quickProgressCheck.message}</p>
+                        )}
                         {(quickTimeAdjustment || (quickDurationMinutes > 4 * 60 && quickMaxEnd)) && (
                           <p className="text-xs text-amber-300 mt-2" role="status">
                             {quickTimeAdjustment || `End time will be adjusted to ${quickMaxEnd}; one entry can be at most 4 hours.`}

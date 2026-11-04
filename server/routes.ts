@@ -29,6 +29,8 @@ import { format, parseISO, eachDayOfInterval, isSameDay } from "date-fns";
 import { sendEmail } from "./email";
 import { validateWithRules, normalizeValidationRules, DEFAULT_VALIDATION_RULES, isWithinSubmissionWindow, type ValidationRules } from "@shared/timesheetValidation";
 import { evaluateSameDaySubmission, resolveTimeZone, SAME_DAY_SUBMIT_CUTOFF_HOUR } from "@shared/submissionRestriction";
+import { evaluateWeeklyLock, WEEKLY_LOCK_MESSAGE } from "@shared/weeklyLock";
+import { evaluateProgressIncrement, getRemainingProgress, PROGRESS_INCREMENT_ERROR_CODE } from "@shared/progressIncrement";
 import bcrypt from "bcryptjs";
 import { registerGoogleCalendarRoutes } from "./googleCalendar";
 
@@ -995,6 +997,7 @@ export async function registerRoutes(
       if (!employeeCode || !date) {
         return res.status(400).json({ error: "employeeCode and date are required" });
       }
+      if (await rejectIfWeekLocked(req, res, date)) return;
       const results = await generateTimesheetForDay(employeeCode, date);
       res.json({ generated: results });
     } catch (error) {
@@ -1012,6 +1015,7 @@ export async function registerRoutes(
       if (!employeeCode || !date) {
         return res.status(400).json({ error: "employeeCode and date are required" });
       }
+      if (await rejectIfWeekLocked(req, res, date)) return;
       const submitter = await storage.getEmployeeByCode(employeeCode);
       if (submitter) {
         const sameDay = await checkSameDaySubmission(req, submitter.id, date);
@@ -1381,6 +1385,29 @@ export async function registerRoutes(
   });
 
   // ============ SUBTASKS ROUTES ============
+  // Existing progress already submitted to PMS for a task / subtask, so the form can show it and limit the
+  // new entry to the remaining balance. Read-only. `progress: null` means "unknown" (the form then behaves
+  // exactly as it did before this feature).
+  app.get("/api/pms/existing-progress", async (req, res) => {
+    try {
+      const taskId = typeof req.query.taskId === 'string' ? req.query.taskId : undefined;
+      const subtaskId = typeof req.query.subtaskId === 'string' ? req.query.subtaskId : undefined;
+      if (!taskId && !subtaskId) {
+        return res.status(400).json({ error: "taskId or subtaskId is required" });
+      }
+      const { getExistingPmsProgress } = await import('./pmsSupabase');
+      const progress = await getExistingPmsProgress(taskId, subtaskId);
+      res.json({
+        progress,
+        remaining: progress === null ? null : getRemainingProgress(progress),
+        level: subtaskId ? 'subtask' : 'task',
+      });
+    } catch (error) {
+      console.error("Existing progress error:", error);
+      res.status(500).json({ error: "Failed to read existing progress" });
+    }
+  });
+
   // NOTE: this is the single source of truth for GET /api/subtasks. It scopes subtasks
   // strictly to the given taskId (and optionally the caller's department/employee code),
   // so the Plan-for-Day and Tracker subtask dropdowns only ever show subtasks that belong
@@ -2135,6 +2162,7 @@ export async function registerRoutes(
 
   app.post("/api/time-entries", async (req, res) => {
     try {
+      if (await rejectIfWeekLocked(req, res, req.body?.date)) return;
       // Manual field extraction to ensure all data is captured
       const entryData = {
         ...req.body,
@@ -2157,6 +2185,33 @@ export async function registerRoutes(
         pmsSubtaskId: req.body.pmsSubtaskId || null,
         keyStep: req.body.keyStep || null,
       };
+
+      // Existing-progress validation (additive). Only runs for requests that carry `progressIncrement`
+      // (the Task form for NEW entries). The client enters just the progress being added; the server reads
+      // the progress already in PMS, rejects repeats / anything above the remaining balance, and turns
+      // existing + increment into the total that is stored and synced to PMS below. Requests without the
+      // field (every other caller) are untouched.
+      // previousProgress is server-owned: never trust a value sent by the client.
+      (entryData as any).previousProgress = undefined;
+      if (req.body?.progressIncrement !== undefined && req.body?.progressIncrement !== null) {
+        const { getExistingPmsProgress } = await import('./pmsSupabase');
+        const existingProgress = await getExistingPmsProgress(req.body.pmsId, req.body.pmsSubtaskId);
+        // Unknown existing progress => fail open and keep the client-supplied value, as before.
+        if (existingProgress !== null) {
+          const check = evaluateProgressIncrement(existingProgress, Number(req.body.progressIncrement));
+          if (!check.valid) {
+            return res.status(400).json({
+              error: check.message,
+              message: check.message,
+              code: PROGRESS_INCREMENT_ERROR_CODE,
+              existingProgress: check.existing,
+              remainingProgress: check.remaining,
+            });
+          }
+          entryData.percentageComplete = check.total;
+          (entryData as any).previousProgress = check.existing;
+        }
+      }
 
       const result = insertTimeEntrySchema.safeParse(entryData);
       if (!result.success) {
@@ -2367,6 +2422,30 @@ export async function registerRoutes(
       if (!entry) {
         return res.status(404).json({ error: "Time entry not found" });
       }
+      if (await rejectIfWeekLocked(req, res, entry.date)) return;
+
+      // Existing-progress validation (additive) for a draft that has no progress saved yet (0%): same rule
+      // as on create — the client sends only the progress being added; existing PMS progress + added is the
+      // total that is stored and synced. Entries that already carry progress keep the original behaviour.
+      if (req.body?.progressIncrement !== undefined && req.body?.progressIncrement !== null && !Number(entry.percentageComplete)) {
+        const { getExistingPmsProgress } = await import('./pmsSupabase');
+        const existingProgress = await getExistingPmsProgress(req.body.pmsId, req.body.pmsSubtaskId);
+        if (existingProgress !== null) {
+          const check = evaluateProgressIncrement(existingProgress, Number(req.body.progressIncrement));
+          if (!check.valid) {
+            return res.status(400).json({
+              error: check.message,
+              message: check.message,
+              code: PROGRESS_INCREMENT_ERROR_CODE,
+              existingProgress: check.existing,
+              remainingProgress: check.remaining,
+            });
+          }
+          entryData.percentageComplete = check.total;
+          (result.data as any).percentageComplete = check.total;
+          (result.data as any).previousProgress = check.existing;
+        }
+      }
 
       if (exceedsMaximumTimeEntryDuration(
         entryData.startTime || entry.startTime,
@@ -2543,6 +2622,7 @@ export async function registerRoutes(
       }
 
       const date = event.date;
+      if (await rejectIfWeekLocked(req, res, date)) return;
       const tStart = event.startTime;
       const tEnd = event.endTime;
       const [sh, sm] = tStart.split(':').map(Number);
@@ -2605,6 +2685,8 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Time entry not found" });
       }
 
+      if (await rejectIfWeekLocked(req, res, entry.date)) return;
+
       if (entry.status !== 'pending' && entry.status !== 'draft') {
         return res.status(400).json({ error: "Cannot delete entry that is not pending or draft" });
       }
@@ -2622,6 +2704,9 @@ export async function registerRoutes(
   app.post("/api/time-entries/submit-daily/:employeeId/:date", async (req, res) => {
     try {
       const { employeeId, date } = req.params;
+
+      // Weekly lock: a week that has ended (from the following Sunday) can no longer be submitted.
+      if (await rejectIfWeekLocked(req, res, date)) return;
 
       // Same-day restriction: today's timesheet can only be submitted after 5 PM local time (unless the
       // employee switched the check off). Past dates and days that were already submitted are untouched.
@@ -3227,6 +3312,7 @@ export async function registerRoutes(
       if (!existing) {
         return res.status(404).json({ error: "Time entry not found" });
       }
+      if (await rejectIfWeekLocked(req, res, existing.date)) return;
       // Validated only inside the 24-hour period (from the work date, or from the rejection for rejected entries).
       const resubmitInWindow = isWithinSubmissionWindow(
         String(existing.date),
@@ -3482,6 +3568,38 @@ export async function registerRoutes(
       alreadySubmitted,
     });
   }
+
+  // ---- Weekly timesheet submission lock (Sunday–Saturday weeks) ----
+  // Admin switch, absent => OFF, so nothing changes until an admin turns it on. When ON, every date of a
+  // week that ended before the current week's Sunday is read-only for submit / create / edit / delete.
+  function isWeeklyLockEnabled(settings: any): boolean {
+    return settings?.weeklySubmissionLockEnabled === true;
+  }
+
+  async function checkWeeklyLock(req: any, date: unknown) {
+    const settings = await readSettings();
+    return evaluateWeeklyLock({
+      workDate: String(date ?? ''),
+      timeZone: requestTimeZone(req, settings),
+      enabled: isWeeklyLockEnabled(settings),
+    });
+  }
+
+  // Sends the 403 and returns true when the date is locked; callers just `if (await rejectIfWeekLocked(...)) return;`
+  async function rejectIfWeekLocked(req: any, res: any, date: unknown): Promise<boolean> {
+    const lock = await checkWeeklyLock(req, date);
+    if (!lock.locked) return false;
+    res.status(403).json({
+      error: lock.message,
+      message: lock.message,
+      code: lock.code,
+      today: lock.today,
+      timeZone: lock.timeZone,
+      weekStart: lock.weekStart,
+      weekEnd: lock.weekEnd,
+    });
+    return true;
+  }
   app.get("/api/tasks", async (req, res) => {
     try {
       const { projectId, userDepartment, userEmpCode, userRole } = req.query;
@@ -3563,10 +3681,21 @@ export async function registerRoutes(
         return ist.toISOString().split('T')[0];
       })();
 
+      // Performance only: fetch every active project's tasks together instead of one project at a time.
+      // The loop below uses exactly the same per-project results as before.
+      const prefetchedTasks = new Map<string, any[]>();
+      await Promise.all(
+        projects
+          .filter((project: any) => isProjectActive(project, pendingTodayKey))
+          .map(async (project: any) => {
+            prefetchedTasks.set(String(project.id), await getTasks(project.project_code, userDept, employee.employeeCode));
+          })
+      );
+
       for (const project of projects) {
         // Completed / out-of-timeline projects must not raise "due today" warnings
         if (!isProjectActive(project, pendingTodayKey)) continue;
-        const tasks = await getTasks(project.project_code, userDept, employee.employeeCode);
+        const tasks = prefetchedTasks.get(String(project.id)) ?? await getTasks(project.project_code, userDept, employee.employeeCode);
         for (const t of tasks) {
           // determine assignee match
           const assignedTo = (t.assignee || (t as any).assigned_to || '').toString();
@@ -5150,6 +5279,44 @@ export async function registerRoutes(
       res.json({ enabled: req.body.enabled });
     } catch (err) {
       console.error('[SETTINGS] Failed to update same-day restriction:', err);
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // Weekly submission lock (Admin → Settings). Readable by everyone (the tracker needs it to show the lock
+  // message); only an admin can change it.
+  app.get('/api/settings/weekly-submission-lock', async (req, res) => {
+    try {
+      const settings = await readSettings();
+      res.json({
+        enabled: isWeeklyLockEnabled(settings),
+        message: WEEKLY_LOCK_MESSAGE,
+        timeZone: requestTimeZone(req, settings),
+      });
+    } catch (err) {
+      console.error('[SETTINGS] Failed to read weekly submission lock:', err);
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  app.patch('/api/settings/weekly-submission-lock', async (req, res) => {
+    try {
+      const { employeeId, enabled } = req.body ?? {};
+      if (typeof enabled !== 'boolean') {
+        return res.status(400).json({ error: 'enabled must be true or false' });
+      }
+      const actor = employeeId ? await storage.getEmployee(employeeId) : null;
+      if (!actor || actor.role !== 'admin') {
+        return res.status(403).json({ error: 'Unauthorized. Only an Admin can change this setting.' });
+      }
+      const settings = await readSettings();
+      settings.weeklySubmissionLockEnabled = enabled;
+      const success = await writeSettings(settings);
+      if (!success) return res.status(500).json({ error: 'Failed to write settings' });
+      broadcast('settings_updated', { weeklySubmissionLockEnabled: enabled, changedBy: actor.name });
+      res.json({ enabled });
+    } catch (err) {
+      console.error('[SETTINGS] Failed to update weekly submission lock:', err);
       res.status(500).json({ error: 'Server error' });
     }
   });
